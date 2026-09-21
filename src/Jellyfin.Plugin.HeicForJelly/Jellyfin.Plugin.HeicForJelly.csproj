@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net9.0, not net8.0: Jellyfin 10.11 moved to .NET 9. The server's
+      jellyfin.runtimeconfig.json declares tfm net9.0 with runtime 9.0.12, and
+      Jellyfin.Controller 10.11.6 ships no net8.0 asset at all.
+    -->
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>Jellyfin.Plugin.HeicForJelly</RootNamespace>
+    <!-- Must stay in step with the "version" field of meta.json, which is what the
+         dashboard displays and what Jellyfin compares on upgrade. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Pinned exactly, not floated. A plugin links against one Jellyfin.Controller
+      ABI and any 10.x minor can break it; that drift is what froze the prior art at
+      10.9. 10.11.6 is the server's own version - see docs/04-j0-spike.md.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)../../stylecop.json" Link="stylecop.json" />
+  </ItemGroup>
+
+</Project>

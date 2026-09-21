@@ -54,12 +54,16 @@ rights. It is a reference for *what breaks*, never a source.
 attribution. Message = the change and its reason. (Carried over from jellypic — say
 so if it should not apply here.)
 
-## Open question on conventions
+## Conventions, settled 2026-09-21
 
-jellypic forbids comments in app sources. That rule **cannot be carried over as-is**:
-the official Jellyfin plugin template ships StyleCop with the SA16xx documentation
-rules and `TreatWarningsAsErrors`, so missing XML doc comments are build failures.
-Decide before J1: relax the rule for this project, or disable those analyzers.
+jellypic's "no comments in app sources" rule **does not apply here**. StyleCop stays
+on, with its SA16xx documentation rules and `TreatWarningsAsErrors`, and **every
+public member carries an XML doc comment**. Chosen for conformance with the Jellyfin
+plugin ecosystem, should this ever be published.
+
+Write doc comments that earn their place — why a guard exists, what a caller must not
+assume. `<summary>Gets or sets the name.</summary>` satisfies the analyzer and tells
+the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 

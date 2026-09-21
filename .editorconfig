@@ -1,0 +1,12 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+
+# SA1633 demands a licence banner at the top of every file. The project carries no
+# licence header scheme, and repeating one across four files adds no information.
+# The SA16xx rules that matter - documented public members - stay on; see CLAUDE.md.
+dotnet_diagnostic.SA1633.severity = none
