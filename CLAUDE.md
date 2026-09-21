@@ -1,7 +1,7 @@
 # heic-for-jelly
 
 A Jellyfin server plugin that makes **HEIC/HEIF photos visible and renderable** in a
-Jellyfin photo library. C#/.NET 8, loaded by the Jellyfin server — no client changes.
+Jellyfin photo library. C#/.NET 9, loaded by the Jellyfin server — no client changes.
 
 Born out of `../jellypic` (an iOS reader on top of Jellyfin) but **it is a separate
 project on a separate release cycle**: Jellyfin's, not the app's. jellypic is a
@@ -88,4 +88,8 @@ ffprobe does not expose and which 58 % of the library needs.
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two
 runs astray.
 
-Server: Jellyfin **10.11.6** in Docker, jellyfin-ffmpeg **7.1.3**, amd64.
+Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64.
+
+Building: the dev Mac is Big Sur and no supported .NET runs there, so `tools/build.sh`
+rsyncs to a Monterey box and compiles over ssh. `--deploy` installs the dll into
+Jellyfin but never restarts it — a restart cuts playback, so it stays a manual call.

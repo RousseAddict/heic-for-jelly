@@ -6,7 +6,7 @@ Agreed in chat 2026-09-20. Facts behind every design choice are in
 
 ## 1. Scope
 
-A Jellyfin **server plugin**, C#/.NET 8, its own repository, its own release cycle.
+A Jellyfin **server plugin**, C#/.NET 9, its own repository, its own release cycle.
 Roughly **four useful files, 600-900 lines**, half of it template boilerplate.
 
 `../jellypic` is a consumer, not a dependency: if the plugin works, the iOS reader
@@ -104,8 +104,11 @@ costs one command.
 - **575 genuine HEICs**, 2022-2025, sitting beside jpg/png/mov in
   `/media/Downloads/Photos`, which is a scanned library.
 
-Still missing, and now the actual blockers: a **.NET 8 SDK** on the dev machine, and
-`git init` — the project is not yet a repository.
+Both former blockers are cleared. The **SDK is .NET 9**, not 8: Jellyfin 10.11 moved
+to net9.0 and `Jellyfin.Controller` 10.11.6 ships no net8.0 asset at all. The dev Mac
+runs Big Sur, which no supported .NET reaches, so compilation is delegated over ssh to
+a Monterey machine — `tools/build.sh` does the sync, build and install. The project is
+now a git repository.
 
 ## 8. Revision to §3, after J0
 
