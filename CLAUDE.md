@@ -67,16 +67,23 @@ the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 
-Nothing built, but **the premise is confirmed**. The doubt raised by the first two J0
-runs is resolved: the library was *mixed*, and the spike had picked two of the bad
-files. A content sniff of all 1 961 `.HEIC` found 1 386 JPEGs wearing the wrong
-extension and **575 genuine HEICs** (2022-2025; the format appears nowhere earlier).
+**J0 and J1 are both passed. J2 is next: the resolver and the encoder.**
+
+The premise is confirmed. The doubt raised by the first two J0 runs is resolved: the
+library was *mixed*, and the spike had picked two of the bad files. A content sniff of
+all 1 961 `.HEIC` found 1 386 JPEGs wearing the wrong extension and **575 genuine
+HEICs** (2022-2025; the format appears nowhere earlier).
 
 The mislabelled ones were renamed to `.jpg` on 2026-09-20 via
 `tools/rename-mislabelled-heic.sh` and now show up in Jellyfin. The remaining 575 are
 what this plugin exists for, and nothing but a decoder will reach them.
 
-**J0 passed, and J1 may start** — but the encoder is not a thin `ffmpeg -i` wrapper.
+J1 shipped a skeleton that the server loads cleanly — `Loaded plugin: "HEIC for Jelly"
+"1.0.0.0"`, no warning — which is all it was meant to prove: that net9.0 against
+`Jellyfin.Controller` 10.11.6 is the ABI this server actually accepts. It decodes
+nothing.
+
+The encoder J2 must add is **not** a thin `ffmpeg -i` wrapper.
 The genuine files are HEVC **tile grids**: no plain invocation decodes them, each
 returns a single 512x512 tile with exit code 0. What works, verified inside the
 container at ~0.6 s per photo, is an `xstack` filtergraph generated from

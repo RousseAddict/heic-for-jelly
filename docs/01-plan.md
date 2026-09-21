@@ -86,8 +86,8 @@ recipe built on `ffprobe -show_stream_groups`.
 
 | | Deliverable | What it decides |
 |---|---|---|
-| **J0** | **Spike**: does jellyfin-ffmpeg decode a real HEIC, and how fast | **If it fails, the plan changes** — Magick.NET, or back to transcoding |
-| J1 | Skeleton that loads and shows up in the dashboard | validates the targeted ABI |
+| ~~**J0**~~ | ~~**Spike**: does jellyfin-ffmpeg decode a real HEIC, and how fast~~ | **passed 2026-09-21** — it decodes, but only through a generated `xstack` graph; see §8 |
+| ~~J1~~ | ~~Skeleton that loads and shows up in the dashboard~~ | **passed 2026-09-21** — net9.0 against `Jellyfin.Controller` 10.11.6 is the right ABI; the server logs `Loaded plugin: "HEIC for Jelly" "1.0.0.0"` with no warning |
 | J2 | Resolver + encoder: HEIC files appear **with thumbnails** on a 10-file folder | most of the technical risk dies here |
 | J3 | EXIF to `PremiereDate` — correct order in jellypic | |
 | J4 | Hardening: ignore-files, video-owned images, corrupt files, logging | |
