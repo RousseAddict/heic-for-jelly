@@ -9,12 +9,8 @@ artifacts/
 *.zip
 *.nupkg
 
-# Spike scratch
-/tmp/
-*.jpg
-*.png
-*.heic
-*.HEIC
+# Spike scratch. Deliberately not *.png: the plugin ships a thumb.png.
+scratch/
 
 # Editor / OS
 .vs/
