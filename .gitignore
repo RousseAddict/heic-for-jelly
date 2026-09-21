@@ -1,0 +1,22 @@
+# Build output
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+
+# Plugin packaging
+*.zip
+*.nupkg
+
+# Spike scratch
+/tmp/
+*.jpg
+*.png
+*.heic
+*.HEIC
+
+# Editor / OS
+.vs/
+.idea/
+.DS_Store
