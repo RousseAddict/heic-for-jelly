@@ -61,6 +61,11 @@ public class HeicImageEncoder : IImageEncoder
         // Deliberately lazy. MediaEncoder.EncoderVersion is null until the server validates
         // ffmpeg during startup, and this encoder may well be constructed before that happens.
         _canDecodeHeic = new Lazy<bool>(CheckFfmpeg);
+
+        // The one line that proves the decoration took effect. Without it a failed swap is
+        // indistinguishable from a working one, since the server logs only that the plugin
+        // loaded and never names the encoder it ended up resolving.
+        _logger.LogInformation("Image encoder decorated: {Name}", Name);
     }
 
     /// <summary>
