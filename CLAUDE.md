@@ -67,7 +67,7 @@ the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 
-**J0 through J4 are passed. J5 is next: the full library, with measurements.**
+**J0 through J5 are passed. The plugin is done; what remains is upkeep.**
 
 The premise is confirmed. The doubt raised by the first two J0 runs is resolved: the
 library was *mixed*, and the spike had picked two of the bad files. A content sniff of
@@ -135,8 +135,16 @@ J4 closed both gaps, and neither was what it looked like.
 Measured: **40/40** full-size renders at exactly the stored dimensions, median 3.1 s,
 max 16.0 s for a 15736x3804 panorama. `docs/01-plan.md` §11.
 
-J5's real cost is cache, not time: forty full-size renders added 210 MB to
-`cache/images`, so the whole library at full size is around 3 GB.
+J5 rendered all 575 at a thumbnail size the UI never requests, so every one was a cold
+decode: **575/575 correct, zero failure, not one warning logged**. Median 0.92 s, p90
+0.98 s, max 3.33 s (a 98-tile panorama), 8 min 45 s for the library. A cached
+re-request is 0.038 s — the cost is paid once per photo per size, and a library scan
+avoids it entirely because `GetImageSize` answers from the probe. Cache: 78 MB for the
+575 thumbnails, ~5 MB per full-size render. `docs/01-plan.md` §12.
+
+The remaining risk is the one §5 of the plan named first and J5 cannot retire: **ABI
+drift**. The plugin pins `Jellyfin.Controller` 10.11.6, and any 10.x minor can break
+it. That is what froze the prior art at 10.9.
 
 **Read `docs/04-j0-spike.md` before anything else.** Never benchmark on
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two

@@ -94,7 +94,7 @@ recipe built on `ffprobe -show_stream_groups`.
 | | *the decode itself* — done | ffprobe geometry, `xstack`, crop, `irot` transpose |
 | ~~J3~~ | ~~EXIF to `PremiereDate` — correct order in jellypic~~ | **passed 2026-09-22** — 575/575 on twelve fields; see §10 |
 | ~~J4~~ | ~~Hardening: ignore-files, video-owned images, corrupt files, logging, and the full-size request~~ | **passed 2026-09-22** — two real bugs found and fixed; see §11 |
-| J5 | Full library, with measurements | |
+| ~~J5~~ | ~~Full library, with measurements~~ | **passed 2026-09-22** — 575/575, the cost is one-off; see §12 |
 
 J0 is deliberately first: it is the only step that can cancel the other five, and it
 costs one command.
@@ -212,3 +212,34 @@ test. They were written in J2 and are listed in `02` §6.
 `cache/images`. The whole library at full size is roughly 3 GB, and a full-size decode
 is five times a thumbnail's. That is a measurement, not a blocker, but J5 should size
 the cache volume before sweeping 575 files.
+
+## 12. J5, measured live 2026-09-22
+
+All 575 photos requested at a thumbnail size the web UI never asks for
+(`maxWidth=396`), so every one was a cold render — no cache was deleted to arrange
+that. Then the first sixty re-requested, to measure the cached path.
+
+| | |
+|---|---|
+| Photos rendered | **575 / 575**, zero failure |
+| Dimensions and aspect ratio | 575 / 575 correct against the stored values |
+| Cold render, median · p90 · max | **0.92 s · 0.98 s · 3.33 s** |
+| Whole library, sequentially | **8 min 45 s** |
+| Cached re-request, median | **0.038 s** — 24× faster |
+| Cache growth | 78 MB for 575 thumbnails (~136 KB each) |
+| Temporary files left behind | **0** |
+| Plugin log lines emitted | **0** — not one warning across 575 decodes |
+
+**The cost is one-off, per photo and per size.** 0.92 s is a decode (J0 measured 0.54 s
+median for the ffmpeg half) plus Skia's resize and encode. It is paid once: the
+resized-image cache is keyed by an image tag that does not change, so a browsing client
+pays it for the photos it scrolls past and never again. Answering `GetImageSize` from
+the probe keeps a library scan clear of all of it — 7 716 files in 1 min 01 s, J2 §9.
+
+Sizing, for a library this shape: thumbnails cost ~136 KB each, full-size renders
+~5 MB. Warming all 575 at every size a client might ask for is the 3 GB figure from
+§11; warming the grid is 78 MB. Nothing here needs a bigger disk.
+
+**The tail is the panoramas.** The 3.33 s maximum is the 15736x3852 file, a 98-tile
+grid — 3.6× the median, and the same shape of outlier as J4's 16 s at full size. A
+library of panoramas would be a different report; this one has ten.
