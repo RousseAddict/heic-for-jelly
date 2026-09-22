@@ -45,6 +45,15 @@ and TIFF, which sit in the resolver list but not in Skia's (jellyfin#9364).
   a service type. A plugin can therefore replace a core singleton.
 - `ApplicationHost` calls `GetExports<IItemResolver>()`, which scans plugin
   assemblies. A plugin can add its own resolver **without touching any format list**.
+  Those exports are built with `ApplicationHost.cs:CreateInstanceSafe`, which calls
+  `ActivatorUtilities.CreateInstance` — so **constructor injection works** in a plugin
+  resolver, and `NamingOptions` and `IDirectoryService` are both registered singletons
+  (`ApplicationHost.cs:RegisterServices`). A constructor that throws does not crash
+  the scan: it is caught, logged, and the whole **plugin is failed**.
+- Nothing filters files by extension before the resolvers run.
+  `Emby.Server.Implementations/Library/IgnorePatterns.cs` is a deny-list of names and
+  directories (`@eaDir`, `sample.*`, `**/metadata/**`), not an allow-list of formats,
+  so `.heic` paths do reach a resolver. Verified at `v10.11.6`.
 - `Jellyfin.Server/CoreAppHost.cs` registers `IImageEncoder` **by interface**
   (`AddSingleton(typeof(IImageEncoder), imageEncoderType)`, Skia or `NullImageEncoder`).
   Nothing in the core resolves `SkiaEncoder` concretely, so the interface can be
@@ -101,10 +110,18 @@ precisely because EXIF `DateTime` carries no timezone and `ToUniversalTime()` on
 
 ## 6. Guards to copy from `PhotoResolver` (behaviour, not code)
 
-A plugin resolver runs at `ResolverPriority.First`, i.e. **before everything, for
-every file**, so it must bail out instantly on a non-heic extension. It must also
-reproduce two rejections that `PhotoResolver.Resolve` performs, or artwork gets
-indexed as photos:
+Correction, 2026-09-21: the priority to use is **`ResolverPriority.Plugin`**, not
+`First`. `MediaBrowser.Controller/Resolvers/ResolverPriority.cs` defines `Plugin = 0`
+and documents it as *"the highest priority, used by plugins to bypass the default
+server resolvers"*; `First = 1` is where the server's own resolvers sit.
+`ItemResolver<T>.Priority` defaults to `First`, so the property must be overridden —
+it is not inherited correctly by omission.
+
+`LibraryManager` sorts by `Priority` and takes the **first non-null**
+(`LibraryManager.cs:ResolveItem`), so a plugin resolver runs **before everything, for
+every file in every library**. It must bail out instantly on a non-heic extension.
+It must also reproduce two rejections that `PhotoResolver.Resolve` performs, or
+artwork gets indexed as photos:
 
 - `PhotoResolver._ignoreFiles` — filenames starting with `folder`, `thumb`,
   `landscape`, `fanart`, `backdrop`, `poster`, `cover`, `logo`, `default`.

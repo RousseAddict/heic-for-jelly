@@ -10,3 +10,10 @@ insert_final_newline = true
 # licence header scheme, and repeating one across four files adds no information.
 # The SA16xx rules that matter - documented public members - stay on; see CLAUDE.md.
 dotnet_diagnostic.SA1633.severity = none
+
+# SA1101 (this.field) and SA1309 (no leading underscore) are a matched pair: together
+# they impose StyleCop's own "this.field" house style. Jellyfin uses "_field" and
+# disables both, and the point of running StyleCop here is to match the plugin
+# ecosystem, not to diverge from it inside the very files that mirror server code.
+dotnet_diagnostic.SA1101.severity = none
+dotnet_diagnostic.SA1309.severity = none
