@@ -102,12 +102,52 @@ rebuild the inner encoder from `descriptor.ImplementationType` via
   lazily, on first use, not in a constructor.
 - `ImageProcessor.cs:ProcessImage` returns the **original file untouched** when
   `options.HasDefaultOptions(...)` holds and auto-orientation is not required — before
-  `EncodeImage` is ever called. A client asking for an unresized image therefore still
-  receives raw HEIC. Decoding alone does not close that hole.
+  `EncodeImage` is ever called. This was written up as an open hole; §4a shows it is
+  closed for this plugin, and by an unrelated decision.
 
 Decorating here means Jellyfin's own machinery keeps applying: the resized-image
 cache (`ImageProcessor.ResizedImageCachePath`), the encoding concurrency limit
 (`ParallelImageEncodingLimit`), ETags, conditional GETs, auth and per-library ACL.
+
+### 4a. There are *two* short-circuits, and the second one bites — verified 2026-09-22
+
+The full-size request was predicted above to bypass the plugin and serve raw HEIC. It
+does not, and what it did instead was worse: every full-size request **404ed**, with
+`Could not find file '/cache/images/resized-images/…jpg'`. Two separate findings.
+
+**The `ImageProcessor` short-circuit is not reached.** It reads
+
+```
+options.HasDefaultOptions(originalImagePath, originalImageSize) && (!autoOrient || !options.RequiresAutoOrientation)
+```
+
+and for one of these photos `autoOrient` is true (`ImageController` passes it for an
+item whose `Orientation` is null) while `ImageProcessingOptions`'s constructor sets
+`RequiresAutoOrientation = true`. Both halves of the `||` are false, so `EncodeImage`
+**is** called for an unresized request. The hole §4 predicted is closed — and it is
+closed by §5a's decision to leave `Orientation` null, which was taken for an unrelated
+reason. Two correct decisions, one accidental interaction; worth knowing, because
+writing an `Orientation` would re-open it.
+
+**`SkiaEncoder.cs:EncodeImage` has a short-circuit of its own**, and it is the one that
+matters:
+
+```
+if (options.HasDefaultOptions(inputPath, originalImageSize) && !autoOrient) return inputPath;
+```
+
+`inputPath` here is the plugin's **temporary decoded file**, which the decode's
+`finally` deletes on the way out. `ImageProcessor` then caches and returns a path that
+nothing ever wrote. The plugin was passing `autoOrient: false` on the inner call —
+deliberately, to stop Skia rotating an image whose `irot` is already baked in — and that
+one boolean was the whole bug.
+
+The fix is `autoOrient: true` with `ImageOrientation.TopLeft`. That is not a
+contradiction: `SkiaEncoder.GetBitmap` resolves the real origin from
+`codec.EncodedOrigin`, which for the ffmpeg-written JPEG is `TopLeft`, so the rotation
+is a no-op either way. Only the short-circuit changes. A guard now also rejects any
+return value other than `outputPath` and falls back to the undecorated call, so the
+class of bug cannot recur silently.
 
 ## 5. Metadata: the half that is free and the half that is not
 

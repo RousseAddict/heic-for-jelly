@@ -351,6 +351,39 @@ it would break the aspect ratio.
 **Coverage over the 575:** EXIF block 575, date 575, ISO 575, GPS **559** — sixteen
 photos genuinely carry no coordinates.
 
+## `crop` rounds odd dimensions down — J4, 2026-09-22
+
+Eleven of the 575 declare a size with an odd dimension, and every one of them decoded
+one pixel short: `3418x2359` came out `3418x2358`, `3024x3115` came out `3024x3114`.
+The acceptance test below caught them, so nothing wrong was ever cached — but eleven
+perfectly good photos were being thrown away.
+
+`crop` aligns its output to the chroma subsampling of its **input**. The tiles are
+`yuv420p`, so the filter silently rounds the crop height down to an even number. The
+output format has nothing to do with it: writing PNG rounds down identically, and so
+does forcing `yuvj444p` on the encoder — both were tested and both failed the same way.
+
+The fix is one token: `crop=W:H:X:Y:exact=1`. It is safe here because the crop offset
+is always `0:0`, so disabling the alignment cannot shift the chroma planes. Verified
+live: all eleven now serve at exactly their declared size.
+
+## Corrupt input, measured 2026-09-22
+
+Eight deliberately malformed `.heic` files — empty, truncated at 100 B / 2 KB / 300 KB
+/ half, 200 KB of `/dev/urandom`, a valid header over a corrupted body, and a 24-byte
+header alone — put through a real library scan and then a full-size image request each.
+
+| input | what stops it | cost |
+|---|---|---|
+| empty, random bytes | the `ftyp` brand check, **before any process is spawned** | a 0-byte read |
+| truncated at 100 B, 2 KB, 24 B | ffprobe: `moov atom not found` / `error reading header` | < 0.2 s |
+| truncated at 300 KB / half, corrupted body | ffprobe reports a valid grid, **ffmpeg fails during the decode** | < 1 s |
+
+Every case falls back to the undecorated encoder, so the client gets the original
+bytes — the status quo, not a broken image. No hang, no unhandled exception, no
+temporary file left in `/tmp/jellyfin`. The brand check earning its keep on the first
+two rows is the same code path that absorbs the 1 386 mislabelled JPEGs.
+
 ## Acceptance test
 
 Whatever decoder wins, the acceptance test is the same, and it is *not* the exit

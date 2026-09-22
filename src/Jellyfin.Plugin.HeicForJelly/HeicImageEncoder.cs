@@ -23,8 +23,10 @@ namespace Jellyfin.Plugin.HeicForJelly;
 /// any file on the host. See <c>docs/03-prior-art.md</c>.
 /// </para>
 /// <para>
-/// Nothing here decodes yet. This is the seam and the capability check; the ffmpeg tile-grid
-/// decode lands next. Until then every call is delegated, so behaviour is unchanged.
+/// Only two of the eleven interface members are intercepted: <see cref="GetImageSize"/>, which
+/// answers for HEIC from the container rather than by decoding, and <see cref="EncodeImage"/>,
+/// which decodes to a temporary file and then lets the inner encoder resize and encode it. Every
+/// other call is delegated untouched, and so is every HEIC that cannot be decoded.
 /// </para>
 /// </remarks>
 public class HeicImageEncoder : IImageEncoder
@@ -202,10 +204,32 @@ public class HeicImageEncoder : IImageEncoder
                 return Delegate();
             }
 
-            // autoOrient and orientation are dropped on purpose: the container's irot rotation is
-            // already baked into the decoded file. Passing them on would rotate a second time as
-            // soon as a metadata provider starts recording EXIF orientation on these items.
-            return _inner.EncodeImage(decoded, dateModified, outputPath, false, null, quality, options, outputFormat);
+            // The item's own orientation is dropped on purpose: the container's irot rotation is
+            // already baked into the decoded file, so passing it on would rotate a second time.
+            // TopLeft says "already upright" and is a no-op inside Skia, which reads the real
+            // origin from the decoded file's codec and finds TopLeft there too.
+            //
+            // autoOrient must nevertheless be true, and that is not a contradiction. Passing false
+            // makes SkiaEncoder.EncodeImage take its `HasDefaultOptions(...) && !autoOrient`
+            // short-circuit and return the *input* path — which here is our temporary file, about
+            // to be deleted in the finally below. ImageProcessor then hands the client a cache
+            // path nothing ever wrote, and every full-size request 404s. That was the behaviour
+            // until this line; see docs/02-jellyfin-internals.md §4.
+            var encoded = _inner.EncodeImage(decoded, dateModified, outputPath, true, ImageOrientation.TopLeft, quality, options, outputFormat);
+
+            if (!string.Equals(encoded, outputPath, StringComparison.OrdinalIgnoreCase))
+            {
+                // Belt and braces for the trap above: anything other than outputPath is a path the
+                // caller cannot use, because the temporary file backing it is deleted below.
+                _logger.LogError(
+                    "The inner encoder returned {Returned} instead of writing {Output} while encoding {Path}; serving the original instead.",
+                    encoded,
+                    outputPath,
+                    inputPath);
+                return Delegate();
+            }
+
+            return encoded;
         }
         finally
         {

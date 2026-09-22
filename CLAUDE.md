@@ -67,7 +67,7 @@ the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 
-**J0 through J3 are passed. J4 is next: hardening.**
+**J0 through J4 are passed. J5 is next: the full library, with measurements.**
 
 The premise is confirmed. The doubt raised by the first two J0 runs is resolved: the
 library was *mixed*, and the spike had picked two of the bad files. A content sniff of
@@ -115,10 +115,28 @@ Three things J3 learned that will bite again:
 a landscape aspect ratio, and writing `TopLeft` would serve raw HEIC. See `docs/02` §5a
 before ever "fixing" that.
 
-Two gaps remain open, both booked for J4: a full-size request still bypasses
-`EncodeImage` entirely (`ImageProcessor.ProcessImage` returns the original file when
-the options are default), and no corrupt or truncated HEIC has been put through the
-decoder yet.
+J4 closed both gaps, and neither was what it looked like.
+
+- The full-size request **did not** bypass `EncodeImage` — `ImageProcessor`'s
+  short-circuit needs `!options.RequiresAutoOrientation`, which is never true here. It
+  404ed instead, because `SkiaEncoder` has a *second* short-circuit that returns its
+  input path when `autoOrient` is false, and that input was our temporary file, already
+  deleted. Passing `autoOrient: true` with `ImageOrientation.TopLeft` fixes it; a guard
+  now rejects any returned path that is not `outputPath`. Full story in `docs/02` §4a.
+  **Leaving `Orientation` null is what keeps the first short-circuit shut** — writing it
+  would re-open the hole.
+- Eleven files decoded one pixel short: `crop` aligns to the **input's** chroma
+  subsampling (`yuv420p` tiles), so an odd height rounds down. `exact=1` on the crop.
+  The output format is irrelevant — PNG and `yuvj444p` were both tested and both failed.
+- Eight deliberately corrupt files (empty, truncated, random, broken body) scan and
+  render with no hang, no exception and no leaked temporary. Empty and random bytes are
+  rejected by the `ftyp` brand check before any process is spawned.
+
+Measured: **40/40** full-size renders at exactly the stored dimensions, median 3.1 s,
+max 16.0 s for a 15736x3804 panorama. `docs/01-plan.md` §11.
+
+J5's real cost is cache, not time: forty full-size renders added 210 MB to
+`cache/images`, so the whole library at full size is around 3 GB.
 
 **Read `docs/04-j0-spike.md` before anything else.** Never benchmark on
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two

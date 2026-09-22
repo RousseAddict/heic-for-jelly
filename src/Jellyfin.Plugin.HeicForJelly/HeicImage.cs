@@ -84,6 +84,15 @@ internal sealed class HeicImage
     /// The crop is not cosmetic. A grid is coded in whole tiles, so a 4032x3024 photo is stored as
     /// 4096x3072 and the last row and column contain padding.
     /// </para>
+    /// <para>
+    /// <c>exact=1</c> on the crop is load-bearing for the eleven files in this library whose
+    /// declared size has an odd dimension. Without it the filter silently rounds the crop down to
+    /// the chroma alignment of its <em>input</em> — the tiles are yuv420p — so a photo declaring
+    /// 3418x2359 decodes as 3418x2358, and the post-decode size assertion then throws away a
+    /// picture that is otherwise perfect. It is not the output format that decides this: writing
+    /// PNG rounds down too. Since the crop offset is always 0:0 here, disabling the alignment
+    /// cannot shift the chroma planes.
+    /// </para>
     /// </remarks>
     public string BuildFilterGraph()
     {
@@ -106,7 +115,7 @@ internal sealed class HeicImage
             builder.Append(CultureInfo.InvariantCulture, $"{_tiles[i].X}_{_tiles[i].Y}");
         }
 
-        builder.Append(CultureInfo.InvariantCulture, $",crop={_width}:{_height}:{_cropX}:{_cropY}");
+        builder.Append(CultureInfo.InvariantCulture, $",crop={_width}:{_height}:{_cropX}:{_cropY}:exact=1");
         builder.Append(RotationFilter());
         builder.Append("[out]");
 

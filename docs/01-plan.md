@@ -93,7 +93,7 @@ recipe built on `ffprobe -show_stream_groups`.
 | | *encoder decoration + ffmpeg version gate* — done, verified live: `Image encoder decorated: "HeicForJelly over Skia"` | the plugin is on the decode path for every image |
 | | *the decode itself* — done | ffprobe geometry, `xstack`, crop, `irot` transpose |
 | ~~J3~~ | ~~EXIF to `PremiereDate` — correct order in jellypic~~ | **passed 2026-09-22** — 575/575 on twelve fields; see §10 |
-| J4 | Hardening: ignore-files, video-owned images, corrupt files, logging, **and the full-size request that bypasses `EncodeImage` entirely** (see `02` §4) | |
+| ~~J4~~ | ~~Hardening: ignore-files, video-owned images, corrupt files, logging, and the full-size request~~ | **passed 2026-09-22** — two real bugs found and fixed; see §11 |
 | J5 | Full library, with measurements | |
 
 J0 is deliberately first: it is the only step that can cancel the other five, and it
@@ -179,3 +179,36 @@ Two findings that cost real time are written up where they belong: the EXIF bloc
 **not in the head of the file** and its marker is **not unique** within it
 (`04-j0-spike.md`), and a library scan **will not re-run a newly deployed metadata
 provider** (`02` §5b).
+
+## 11. J4, measured live 2026-09-22
+
+J4 was booked as hardening against inputs the plugin had never seen. It found two bugs
+in the path it had already shipped, which is the better outcome.
+
+**The full-size request did not bypass `EncodeImage` — it 404ed.** §5's list of things
+that could sink the project did not contain "the inner encoder hands back a path we are
+about to delete", and that is exactly what happened. Root cause and fix in `02` §4a; it
+is one boolean, plus a guard so the class of bug cannot recur silently.
+
+**Eleven files decoded one pixel short and were correctly discarded.** The post-decode
+assertion J0 insisted on did its job; the cause was `crop` aligning to the input's
+chroma subsampling, fixed with `exact=1` (`04-j0-spike.md`). Two wrong hypotheses were
+tested and rejected before the right one — the output pixel format, then PNG.
+
+| | |
+|---|---|
+| Full-size requests, 40-file random sample | **40 / 40 served at exactly the stored dimensions** |
+| The 11 odd-dimension files, full size | 11 / 11 exact |
+| Malformed inputs (8 files, scan + request) | no hang, no exception, original bytes served |
+| Temporary files left behind | **0** |
+| Plugin errors or warnings during the sample | none |
+| Full-size decode, median · max | **3.1 s · 16.0 s** (the 15736x3804 panorama) |
+
+The resolver guards J4 was also meant to add were already in `HeicPhotoResolver`:
+ignored filename prefixes, the collection-type check, and the sibling-video ownership
+test. They were written in J2 and are listed in `02` §6.
+
+**The cost J5 has to weigh is now visible.** Forty full-size renders added 210 MB to
+`cache/images`. The whole library at full size is roughly 3 GB, and a full-size decode
+is five times a thumbnail's. That is a measurement, not a blocker, but J5 should size
+the cache volume before sweeping 575 files.
