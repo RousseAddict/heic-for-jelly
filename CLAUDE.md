@@ -67,7 +67,7 @@ the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 
-**J0 and J1 are both passed. J2 is next: the resolver and the encoder.**
+**J0, J1 and J2 are passed. J3 is next: EXIF to `PremiereDate`.**
 
 The premise is confirmed. The doubt raised by the first two J0 runs is resolved: the
 library was *mixed*, and the spike had picked two of the bad files. A content sniff of
@@ -83,13 +83,24 @@ J1 shipped a skeleton that the server loads cleanly — `Loaded plugin: "HEIC fo
 `Jellyfin.Controller` 10.11.6 is the ABI this server actually accepts. It decodes
 nothing.
 
-The encoder J2 must add is **not** a thin `ffmpeg -i` wrapper.
-The genuine files are HEVC **tile grids**: no plain invocation decodes them, each
-returns a single 512x512 tile with exit code 0. What works, verified inside the
-container at ~0.6 s per photo, is an `xstack` filtergraph generated from
+J2 shipped the resolver and the decoding encoder, and the photos now render. The
+encoder is **not** a thin `ffmpeg -i` wrapper: the genuine files are HEVC **tile
+grids**, and no plain invocation decodes them — each returns a single 512x512 tile
+with exit code 0. What works is an `xstack` filtergraph generated from
 `ffprobe -show_stream_groups -of json` (per-tile stream index and offsets), cropped
 to the declared size, with a `transpose` appended for the `irot` rotation — which
 ffprobe does not expose and which 58 % of the library needs.
+
+Measured live on 2026-09-22: **575 `Photo` items**, dimensions matching an independent
+ffprobe survey **575/575 with zero mismatch**, 575 primary images, no leaked temp file,
+no plugin error, full scan of 7 716 files in **1 min 01 s**. The scale risk did not
+materialise because `GetImageSize` answers from the probe, not from a decode. Details
+in `docs/01-plan.md` §9.
+
+Two gaps remain open, both booked for J4: a full-size request still bypasses
+`EncodeImage` entirely (`ImageProcessor.ProcessImage` returns the original file when
+the options are default), and no corrupt or truncated HEIC has been put through the
+decoder yet.
 
 **Read `docs/04-j0-spike.md` before anything else.** Never benchmark on
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two

@@ -88,10 +88,10 @@ recipe built on `ffprobe -show_stream_groups`.
 |---|---|---|
 | ~~**J0**~~ | ~~**Spike**: does jellyfin-ffmpeg decode a real HEIC, and how fast~~ | **passed 2026-09-21** — it decodes, but only through a generated `xstack` graph; see §8 |
 | ~~J1~~ | ~~Skeleton that loads and shows up in the dashboard~~ | **passed 2026-09-21** — net9.0 against `Jellyfin.Controller` 10.11.6 is the right ABI; the server logs `Loaded plugin: "HEIC for Jelly" "1.0.0.0"` with no warning |
-| J2 | Resolver + encoder: HEIC files appear **with thumbnails** on a 10-file folder | most of the technical risk dies here |
+| ~~J2~~ | ~~Resolver + encoder: HEIC files appear **with thumbnails**~~ | **passed 2026-09-22** — most of the technical risk is dead; see §9 |
 | | *resolver* — done | HEIC files become `Photo` items |
 | | *encoder decoration + ffmpeg version gate* — done, verified live: `Image encoder decorated: "HeicForJelly over Skia"` | the plugin is on the decode path for every image |
-| | *the decode itself* — written, 40/40 correct offline at 0.54 s median; **not yet verified inside Jellyfin** | ffprobe geometry, `xstack`, crop, `irot` transpose |
+| | *the decode itself* — done | ffprobe geometry, `xstack`, crop, `irot` transpose |
 | J3 | EXIF to `PremiereDate` — correct order in jellypic | |
 | J4 | Hardening: ignore-files, video-owned images, corrupt files, logging, **and the full-size request that bypasses `EncodeImage` entirely** (see `02` §4) | |
 | J5 | Full library, with measurements | |
@@ -125,3 +125,28 @@ of §3 stands.
 Magick.NET was the alternative, and **it was evaluated and rejected on 2026-09-21** —
 scan clean, capability never settled, and it decodes in-process. Full reasoning in
 `03-prior-art.md` §4. The decoder is ffmpeg; treat that as closed.
+
+## 9. J2, measured live 2026-09-22
+
+| | |
+|---|---|
+| `Photo` items created | **575** — the whole library, not the test folder |
+| Stored dimensions vs an independent ffprobe survey | **575 / 575 exact, zero mismatch** |
+| Primary image rows | 575 |
+| Temp files left behind | **0** |
+| Plugin errors or warnings | none |
+| Full scan, 7 716 files including 575 probes | **1 min 01 s** |
+
+Dimensions are stored portrait (3024x4032) for grids coded landscape (4032x3024), so
+the `irot` rotation ffprobe cannot see is being read and applied. A 575-file agreement
+also validates the primary-group choice and the stream-index translation across every
+file rather than a sample.
+
+**Risk 4 of §5 — scale — did not materialise.** Answering `GetImageSize` from the probe
+instead of a decode is what bought that: a scan costs one ffprobe per photo, not one
+0.5 s decode. Decoding still happens once per requested thumbnail size, which is the
+figure J5 has to measure.
+
+**Two things J2 did not prove**, both already booked for J4: a full-size request still
+bypasses `EncodeImage` entirely (`02` §4), and no corrupt or truncated HEIC has been
+put through the decoder yet.
