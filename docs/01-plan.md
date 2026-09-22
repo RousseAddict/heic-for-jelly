@@ -89,8 +89,11 @@ recipe built on `ffprobe -show_stream_groups`.
 | ~~**J0**~~ | ~~**Spike**: does jellyfin-ffmpeg decode a real HEIC, and how fast~~ | **passed 2026-09-21** — it decodes, but only through a generated `xstack` graph; see §8 |
 | ~~J1~~ | ~~Skeleton that loads and shows up in the dashboard~~ | **passed 2026-09-21** — net9.0 against `Jellyfin.Controller` 10.11.6 is the right ABI; the server logs `Loaded plugin: "HEIC for Jelly" "1.0.0.0"` with no warning |
 | J2 | Resolver + encoder: HEIC files appear **with thumbnails** on a 10-file folder | most of the technical risk dies here |
+| | *resolver* — done | HEIC files become `Photo` items |
+| | *encoder decoration + ffmpeg version gate* — done, verified live: `Image encoder decorated: "HeicForJelly over Skia"` | the plugin is on the decode path for every image |
+| | *the decode itself* — **next** | ffprobe geometry, `xstack`, crop, `irot` transpose |
 | J3 | EXIF to `PremiereDate` — correct order in jellypic | |
-| J4 | Hardening: ignore-files, video-owned images, corrupt files, logging | |
+| J4 | Hardening: ignore-files, video-owned images, corrupt files, logging, **and the full-size request that bypasses `EncodeImage` entirely** (see `02` §4) | |
 | J5 | Full library, with measurements | |
 
 J0 is deliberately first: it is the only step that can cancel the other five, and it
