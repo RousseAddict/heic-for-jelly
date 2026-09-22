@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.MediaEncoding;
@@ -50,6 +51,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IImageEncoder>(provider => new HeicImageEncoder(
             (IImageEncoder)ActivatorUtilities.CreateInstance(provider, innerType),
             provider.GetRequiredService<IMediaEncoder>(),
+            provider.GetRequiredService<IApplicationPaths>(),
             provider.GetRequiredService<ILogger<HeicImageEncoder>>()));
     }
 }

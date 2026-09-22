@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Drawing;
@@ -42,6 +43,7 @@ public class HeicImageEncoder : IImageEncoder
     private readonly IImageEncoder _inner;
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<HeicImageEncoder> _logger;
+    private readonly HeicDecoder _decoder;
     private readonly Lazy<bool> _canDecodeHeic;
 
     /// <summary>
@@ -51,12 +53,14 @@ public class HeicImageEncoder : IImageEncoder
     /// encoder when Skia's native library is missing.</param>
     /// <param name="mediaEncoder">Used for ffmpeg's path and version, so that the plugin uses
     /// the same binary the server does rather than guessing at one.</param>
+    /// <param name="appPaths">Used for the temporary directory the decode writes through.</param>
     /// <param name="logger">The logger.</param>
-    public HeicImageEncoder(IImageEncoder inner, IMediaEncoder mediaEncoder, ILogger<HeicImageEncoder> logger)
+    public HeicImageEncoder(IImageEncoder inner, IMediaEncoder mediaEncoder, IApplicationPaths appPaths, ILogger<HeicImageEncoder> logger)
     {
         _inner = inner;
         _mediaEncoder = mediaEncoder;
         _logger = logger;
+        _decoder = new HeicDecoder(mediaEncoder, appPaths, logger);
 
         // Deliberately lazy. MediaEncoder.EncoderVersion is null until the server validates
         // ffmpeg during startup, and this encoder may well be constructed before that happens.
@@ -100,9 +104,30 @@ public class HeicImageEncoder : IImageEncoder
     /// <inheritdoc />
     public bool SupportsImageEncoding => _inner.SupportsImageEncoding;
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Reports an image's dimensions, answering for HEIC from the container instead of the pixels.
+    /// </summary>
+    /// <param name="path">The image file.</param>
+    /// <returns>The dimensions, already swapped for a rotated photo.</returns>
+    /// <remarks>
+    /// This is what <c>PhotoProvider.FetchAsync</c> calls to fill in a photo's width and height,
+    /// so it runs once per item during a library scan. Answering from ffprobe's tile geometry
+    /// keeps that to a metadata read; decoding the pixels first would have added the better part
+    /// of a second per photo to every scan, which on a library this size is the difference between
+    /// a scan and an outage.
+    /// </remarks>
     public ImageDimensions GetImageSize(string path)
     {
+        if (_canDecodeHeic.Value && HeicContainer.HasHeicExtension(path))
+        {
+            var image = _decoder.Probe(path);
+
+            if (image is not null)
+            {
+                return image.Dimensions;
+            }
+        }
+
         return _inner.GetImageSize(path);
     }
 
@@ -112,10 +137,80 @@ public class HeicImageEncoder : IImageEncoder
         return _inner.GetImageBlurHash(xComp, yComp, path);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Produces the requested image, decoding HEIC first and letting the inner encoder do the rest.
+    /// </summary>
+    /// <param name="inputPath">The source image.</param>
+    /// <param name="dateModified">The source's modification date.</param>
+    /// <param name="outputPath">Where to write the result.</param>
+    /// <param name="autoOrient">Whether the caller wants EXIF orientation applied.</param>
+    /// <param name="orientation">The orientation the caller recorded for the item.</param>
+    /// <param name="quality">Encoding quality.</param>
+    /// <param name="options">The processing options: resize, blur, overlays, output format.</param>
+    /// <param name="outputFormat">The requested output format.</param>
+    /// <returns>The path actually written.</returns>
+    /// <remarks>
+    /// <para>
+    /// Only the decode is taken over. Resizing, blurring, the played indicator and the output
+    /// format negotiation all stay with the inner encoder — reimplementing any of it would mean
+    /// reimplementing <see cref="ImageProcessingOptions"/>, and getting it subtly wrong.
+    /// </para>
+    /// <para>
+    /// Every failure path falls back to the undecorated call. That yields today's behaviour, a
+    /// HEIC served unresized, rather than a broken image: a regression is worse than the status
+    /// quo this plugin is trying to improve on.
+    /// </para>
+    /// </remarks>
     public string EncodeImage(string inputPath, DateTime dateModified, string outputPath, bool autoOrient, ImageOrientation? orientation, int quality, ImageProcessingOptions options, ImageFormat outputFormat)
     {
-        return _inner.EncodeImage(inputPath, dateModified, outputPath, autoOrient, orientation, quality, options, outputFormat);
+        string Delegate() => _inner.EncodeImage(inputPath, dateModified, outputPath, autoOrient, orientation, quality, options, outputFormat);
+
+        if (!_canDecodeHeic.Value || !HeicContainer.HasHeicExtension(inputPath))
+        {
+            return Delegate();
+        }
+
+        var image = _decoder.Probe(inputPath);
+
+        if (image is null)
+        {
+            return Delegate();
+        }
+
+        var decoded = _decoder.TryDecode(inputPath, image);
+
+        if (decoded is null)
+        {
+            return Delegate();
+        }
+
+        try
+        {
+            // The check J0 insisted on. ffmpeg exits 0 while handing back a single tile or an
+            // embedded preview, and a wrong-sized image encoded here lands in Jellyfin's resized
+            // image cache, keyed by a tag that will not change — it would outlive the bug.
+            var actual = _inner.GetImageSize(decoded);
+
+            if (!actual.Equals(image.Dimensions))
+            {
+                _logger.LogError(
+                    "Decoded {Path} to {Actual} but its {Tiles}-tile grid declares {Expected}; discarding the result rather than caching it.",
+                    inputPath,
+                    actual,
+                    image.TileCount,
+                    image.Dimensions);
+                return Delegate();
+            }
+
+            // autoOrient and orientation are dropped on purpose: the container's irot rotation is
+            // already baked into the decoded file. Passing them on would rotate a second time as
+            // soon as a metadata provider starts recording EXIF orientation on these items.
+            return _inner.EncodeImage(decoded, dateModified, outputPath, false, null, quality, options, outputFormat);
+        }
+        finally
+        {
+            _decoder.Delete(decoded);
+        }
     }
 
     /// <inheritdoc />

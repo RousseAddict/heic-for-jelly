@@ -82,8 +82,11 @@ public class HeicPhotoResolver : ItemResolver<Photo>
     /// <returns>A <see cref="Photo"/>, or <c>null</c> if this file is not ours to claim.</returns>
     protected override Photo? Resolve(ItemResolveArgs args)
     {
-        // Cheapest possible rejection first: this runs once per file for the whole server.
-        if (args.IsDirectory || !HasHeicExtension(args.Path))
+        // Cheapest possible rejection first: this runs once per file for the whole server. The
+        // bytes are deliberately not sniffed here — that would open every candidate during a scan,
+        // and it would not help, because a mislabelled file has to resolve either way now that the
+        // server ignores .heic wholesale. The decoder checks the magic bytes instead.
+        if (args.IsDirectory || !HeicContainer.HasHeicExtension(args.Path))
         {
             return null;
         }
@@ -128,25 +131,5 @@ public class HeicPhotoResolver : ItemResolver<Photo>
         {
             Path = args.Path,
         };
-    }
-
-    /// <summary>
-    /// Reports whether a path carries a HEIC or HEIF extension.
-    /// </summary>
-    /// <remarks>
-    /// Extension only — the bytes are not sniffed, even though this library is known to contain
-    /// JPEGs wearing a <c>.HEIC</c> extension. Sniffing would mean opening every candidate during
-    /// a scan, and it would not help: a mislabelled file resolves either way, since the server
-    /// ignores <c>.heic</c> wholesale. Getting the extension right is the rename script's job.
-    /// What the decoder must not do is trust this classification — it has to check the magic
-    /// bytes itself before assuming it was handed HEIF.
-    /// </remarks>
-    /// <param name="path">The file path.</param>
-    /// <returns><c>true</c> when the extension is <c>.heic</c> or <c>.heif</c>.</returns>
-    private static bool HasHeicExtension(string path)
-    {
-        var extension = Path.GetExtension(path.AsSpan());
-        return extension.Equals(".heic", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".heif", StringComparison.OrdinalIgnoreCase);
     }
 }
