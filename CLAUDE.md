@@ -67,7 +67,7 @@ the reader nothing; prefer a sentence that would have saved someone an hour.
 
 ## Status
 
-**J0, J1 and J2 are passed. J3 is next: EXIF to `PremiereDate`.**
+**J0 through J3 are passed. J4 is next: hardening.**
 
 The premise is confirmed. The doubt raised by the first two J0 runs is resolved: the
 library was *mixed*, and the spike had picked two of the bad files. A content sniff of
@@ -96,6 +96,24 @@ ffprobe survey **575/575 with zero mismatch**, 575 primary images, no leaked tem
 no plugin error, full scan of 7 716 files in **1 min 01 s**. The scale risk did not
 materialise because `GetImageSize` answers from the probe, not from a decode. Details
 in `docs/01-plan.md` §9.
+
+J3 filled in the EXIF, and the timeline sorts. **575/575 exact on twelve fields** —
+date, camera, software, exposure, GPS — diffed against an independent extractor
+sharing no code (`docs/01-plan.md` §10). The planned `MetadataExtractor` dependency
+was dropped: `HeicExif.cs` parses the TIFF block by hand, reading only the tags
+Jellyfin stores, with every offset bounds-checked.
+
+Three things J3 learned that will bite again:
+
+- **`Exif\0\0` is not unique in a HEIC.** It also sits in the `infe` box a kilobyte
+  in. Match the marker *plus* a TIFF header, or you find nothing and see no error.
+- **The EXIF is not in the head of the file.** Ten of the 575 hide it up to 2.5 MB in.
+- **A scan does not re-run a newly deployed metadata provider** — `HasChanged` gates
+  it. An explicit `replaceAllMetadata=true` refresh is required (`docs/02` §5b).
+
+`Photo.Orientation` is left null on purpose; writing it would give every portrait photo
+a landscape aspect ratio, and writing `TopLeft` would serve raw HEIC. See `docs/02` §5a
+before ever "fixing" that.
 
 Two gaps remain open, both booked for J4: a full-size request still bypasses
 `EncodeImage` entirely (`ImageProcessor.ProcessImage` returns the original file when

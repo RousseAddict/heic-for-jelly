@@ -139,6 +139,63 @@ precisely because EXIF `DateTime` carries no timezone and `ToUniversalTime()` on
 `Kind == Unspecified` value assumes the *server's* local zone — which makes
 `DateCreated` drift with the container's `TZ`. Mirror that behaviour exactly.
 
+The same argument applies to `OffsetTimeOriginal`, the EXIF tag that *does* carry a
+zone. `PhotoProvider` ignores it, so the plugin ignores it too — honouring it would
+place a HEIC and a JPEG shot the same afternoon hours apart in the same timeline.
+
+`Aperture` and `ShutterSpeed` are stored as the **raw APEX values**, not f-numbers.
+`PhotoProvider` reads `ExifEntryTag.ApertureValue` and divides the rational without
+converting, so a JPEG in this library shot at f/1.5 is recorded as `1.17`. Converting
+in the plugin would make HEIC and JPEG items disagree about the same lens.
+
+### 5a. `Orientation` must be left null — verified 2026-09-22
+
+The one field of `PhotoProvider`'s set the plugin deliberately does **not** fill.
+Two independent reasons, both read from source:
+
+- `MediaBrowser.Controller/Entities/Photo.cs:GetDefaultPrimaryImageAspectRatio`
+  swaps `Width` and `Height` whenever `Orientation` is one of the four quarter-turn
+  values. Our stored dimensions are **already** the rotated ones — the encoder applies
+  `irot` during the decode — so writing the file's real orientation swaps a pair that
+  is already correct, and every portrait photo gets a landscape aspect ratio.
+- Writing `TopLeft` to dodge that is worse.
+  `src/Jellyfin.Drawing/ImageProcessor.cs:ProcessImage` reads a null orientation as
+  *"unknown, auto-orient anyway"* and `TopLeft` as *"nothing to do"*; that second
+  branch is what lets it return the original file without ever calling `EncodeImage`
+  — i.e. hand the client raw HEIC.
+
+Null is the value that means both "already upright" and "keep going through the
+encoder". It is a behaviour, not an omission.
+
+### 5b. A scan does not re-run providers — verified 2026-09-22
+
+`MediaBrowser.Providers/Manager/MetadataService.cs:GetProviders` computes
+
+```
+runAllProviders = options.ReplaceAllMetadata
+               || metadataRefreshMode == FullRefresh
+               || (isFirstRefresh && …)
+               || (requiresRefresh && …)
+```
+
+and otherwise consults `IHasItemChangeMonitor.HasChanged`. Since `HasChanged`
+compares `LastWriteTimeUtc`, an ordinary library scan will **not** re-read the EXIF of
+a file it has already seen. Correct behaviour — and it means that deploying a new
+metadata provider over an already-scanned library needs an explicit refresh:
+
+```
+POST /Items/{libraryId}/Refresh?metadataRefreshMode=FullRefresh&replaceAllMetadata=true
+```
+
+`IForcedProvider` does **not** help here. In
+`MediaBrowser.Providers/Manager/ProviderManager.cs` it only exempts a provider from
+the `item.IsLocked` check; it has no bearing on the `HasChanged` gate.
+
+Note the blast radius: `replaceAllMetadata=true` re-reads **every** item in the
+library, not only the new format's. On this library that surfaced 184 pre-existing
+`Emby.Photos.PhotoProvider: Error reading image tag` errors on 2017-2018 `.PNG`
+files — a core TagLib failure, unrelated to the plugin, but newly visible.
+
 ## 6. Guards to copy from `PhotoResolver` (behaviour, not code)
 
 Correction, 2026-09-21: the priority to use is **`ResolverPriority.Plugin`**, not

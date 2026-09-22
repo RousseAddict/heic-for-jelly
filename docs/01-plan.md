@@ -92,7 +92,7 @@ recipe built on `ffprobe -show_stream_groups`.
 | | *resolver* — done | HEIC files become `Photo` items |
 | | *encoder decoration + ffmpeg version gate* — done, verified live: `Image encoder decorated: "HeicForJelly over Skia"` | the plugin is on the decode path for every image |
 | | *the decode itself* — done | ffprobe geometry, `xstack`, crop, `irot` transpose |
-| J3 | EXIF to `PremiereDate` — correct order in jellypic | |
+| ~~J3~~ | ~~EXIF to `PremiereDate` — correct order in jellypic~~ | **passed 2026-09-22** — 575/575 on twelve fields; see §10 |
 | J4 | Hardening: ignore-files, video-owned images, corrupt files, logging, **and the full-size request that bypasses `EncodeImage` entirely** (see `02` §4) | |
 | J5 | Full library, with measurements | |
 
@@ -150,3 +150,32 @@ figure J5 has to measure.
 **Two things J2 did not prove**, both already booked for J4: a full-size request still
 bypasses `EncodeImage` entirely (`02` §4), and no corrupt or truncated HEIC has been
 put through the decoder yet.
+
+## 10. J3, measured live 2026-09-22
+
+The whole `Photos` library refreshed with `replaceAllMetadata=true`, then every stored
+item diffed field by field against an independent Python extractor built from the same
+specification but sharing no code.
+
+| | |
+|---|---|
+| HEIC items carrying a `PremiereDate` | **575 / 575** — none left undated |
+| `DateTaken` exact match | 575 / 575 |
+| CameraMake · CameraModel · Software | 575 / 575 each |
+| ExposureTime · ISO · ShutterSpeed · Aperture · FocalLength | 575 / 575 each |
+| Latitude · Longitude · Altitude | 575 / 575 each |
+| Items with `Orientation` written | **0** — deliberate, see `02` §5a |
+| Plugin errors or warnings | none |
+
+Twelve fields × 575 files, zero mismatch.
+
+§3's "EXIF parsing needs a managed library" **did not hold**, and the security scan it
+called for never had to happen: `MetadataExtractor` was dropped in favour of a
+hand-written TIFF reader (`HeicExif.cs`, ~570 lines with its documentation) that reads
+only the dozen tags Jellyfin stores. No new dependency, no transitive tree, and every
+offset it follows is bounds-checked against the block it was handed.
+
+Two findings that cost real time are written up where they belong: the EXIF block is
+**not in the head of the file** and its marker is **not unique** within it
+(`04-j0-spike.md`), and a library scan **will not re-run a newly deployed metadata
+provider** (`02` §5b).

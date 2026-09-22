@@ -314,6 +314,43 @@ looked at — all four upright, no seams, no scrambled tiles. `transpose=1` for 
 and `transpose=2` for 90° CCW are both confirmed visually, which a dimension check
 alone cannot do, since either direction produces the same width and height.
 
+## Where the EXIF actually sits — J3, 2026-09-22
+
+Not a decoder question, but the same kind of container fact, established the same way:
+by probing all 575 rather than a sample.
+
+**ffprobe is not a source of EXIF here.** On a genuine HEIC it reports the brands and
+the geometry and no date at all, so J3 could not shell out the way the decoder does.
+The plugin parses the container itself.
+
+**The EXIF block is found by its marker, not by walking `meta` → `iinf` → `iloc`.**
+The walk is the textbook route and several times the code; the marker is exact enough
+without it — on one condition.
+
+> **`Exif\0\0` is not unique in the file.** It also appears roughly one kilobyte in,
+> inside the `infe` box that *declares* the Exif item's type. The first implementation
+> matched there, seeked to the `iref` box that follows, and found **zero** EXIF across
+> the entire library — with no error, because a failed TIFF parse returns null.
+
+What is matched is therefore **ten bytes**: the marker plus a well-formed TIFF header,
+`Exif\0\0MM\0*` or `Exif\0\0II*\0`. Surveyed across all 575: **575 big-endian, 0
+little-endian, 0 not found.** The little-endian pattern is kept because the format
+permits it, not because anything here uses it.
+
+**The block is not in the head of the file.** A fixed 256 KB read reaches it in 565 of
+575. The other ten — the panoramas, 3.4 to 16.3 MB — hide it between **487 760 and
+2 499 938 bytes** in. The search runs in windows up to an 8 MB ceiling, carrying nine
+bytes between them so a marker straddling two windows is not missed by both.
+
+**EXIF orientation and the container's `irot` agree on all 574 files that have both**
+— 0°↔1, 90°↔8, 180°↔3, 270°↔6, zero disagreement. That is a second, independent
+confirmation of the rotation the decoder applies. It is also why the plugin reads
+orientation and then throws it away; `02-jellyfin-internals.md` §5a says why storing
+it would break the aspect ratio.
+
+**Coverage over the 575:** EXIF block 575, date 575, ISO 575, GPS **559** — sixteen
+photos genuinely carry no coordinates.
+
 ## Acceptance test
 
 Whatever decoder wins, the acceptance test is the same, and it is *not* the exit
