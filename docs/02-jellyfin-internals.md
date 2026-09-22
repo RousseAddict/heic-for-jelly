@@ -67,12 +67,43 @@ HTTP middleware.
 
 ## 4. `IImageEncoder` is small
 
-Ten members: `SupportedInputFormats`, `SupportedOutputFormats`, `Name`,
-`SupportsImageCollageCreation`, `SupportsImageEncoding`, `GetImageSize`,
-`GetImageBlurHash`, `EncodeImage`, `CreateImageCollage`, `CreateSplashscreen`.
+**Eleven** members at v10.11.6, not ten — `CreateTrickplayTile` was added and an
+implementation will not compile without it: `SupportedInputFormats`,
+`SupportedOutputFormats`, `Name`, `SupportsImageCollageCreation`,
+`SupportsImageEncoding`, `GetImageSize`, `GetImageBlurHash`, `EncodeImage`,
+`CreateImageCollage`, `CreateSplashscreen`, `CreateTrickplayTile`.
 
-A decorator intercepts three (`SupportedInputFormats`, `GetImageSize`, `EncodeImage`,
-plus `GetImageBlurHash` if blurhashes are wanted) and delegates the rest to Skia.
+A decorator intercepts `GetImageSize` and `EncodeImage` (plus `GetImageBlurHash` if
+blurhashes are wanted) and delegates the rest.
+
+**`SupportedInputFormats` is not one of them.** Nothing in the server reads
+`IImageEncoder.SupportedInputFormats`: `ImageProcessor.cs:SupportedInputFormats` is its
+own hardcoded `HashSet` and never consults the encoder, and no other call site exists.
+Overriding it in a decorator is documentation, not mechanism — which is precisely why
+the plugin needs a resolver as well. Verified at v10.11.6.
+
+### Wiring the decorator
+
+`CoreAppHost.cs:RegisterServices` registers the encoder **by implementation type**
+(`AddSingleton(typeof(IImageEncoder), imageEncoderType)`) and *then* calls
+`base.RegisterServices`, whose last statement is
+`ApplicationHost.cs:RegisterServices` → `_pluginManager.RegisterServices`. So a plugin's
+`IPluginServiceRegistrator` sees the original `ServiceDescriptor` and can remove it,
+rebuild the inner encoder from `descriptor.ImplementationType` via
+`ActivatorUtilities.CreateInstance`, and register a wrapper in its place.
+`IPluginServiceRegistrator` is instantiated with `Activator.CreateInstance`, so it
+**requires a parameterless constructor**; a throw there marks the plugin
+`Malfunctioned`.
+
+### Two traps in the encode path
+
+- `MediaEncoder.cs:EncoderVersion` returns a field that is **`null`** until
+  `SetFFmpegPath` runs during startup validation. Any version gate must be evaluated
+  lazily, on first use, not in a constructor.
+- `ImageProcessor.cs:ProcessImage` returns the **original file untouched** when
+  `options.HasDefaultOptions(...)` holds and auto-orientation is not required — before
+  `EncodeImage` is ever called. A client asking for an unresized image therefore still
+  receives raw HEIC. Decoding alone does not close that hole.
 
 Decorating here means Jellyfin's own machinery keeps applying: the resized-image
 cache (`ImageProcessor.ResizedImageCachePath`), the encoding concurrency limit
