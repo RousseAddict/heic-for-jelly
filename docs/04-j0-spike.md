@@ -220,9 +220,8 @@ against `coded_*`). The layout string is a mechanical transform of this JSON.
 **Nothing may be hardcoded.** Sampling 30 files:
 
 - tiles are usually 512x512, but one file is **896x960** — tile size varies;
-- every file carries **96 tile streams, not 48**: two grids, the second almost
-  certainly the HDR gain map. Streams `0..47` happening to be the primary grid is a
-  convention, not a guarantee — take the membership from `subcomponents`;
+- some files carry a second tile grid — see the full survey below, which corrects the
+  count this line originally gave;
 - the 320x240 thumbnail is usually present but not always.
 
 ### The one thing ffprobe will not tell you: rotation
@@ -263,7 +262,8 @@ bytes, and append the matching `transpose`.
 **Passed.** jellyfin-ffmpeg can produce a correct full-resolution image for this
 library, without new dependencies, in ~0.6 s per photo. J1 may start.
 
-Open items, none of them blocking:
+Open items, none of them blocking. **All four are now closed** — item 1 in
+`03-prior-art.md` §4, items 2 to 4 in the full survey above.
 
 1. **Benchmark Magick.NET against the filtergraph** before committing to the
    plumbing. If it is close on speed, libheif doing grid + `irot` natively may be
@@ -274,6 +274,47 @@ Open items, none of them blocking:
    composes with rotation.
 4. **Re-check the tile-size assumption on the full 575**, not the 30 sampled — one
    outlier at 896x960 already showed up.
+
+## The full survey, 2026-09-22 — all 575 files, and three of those items closed
+
+`ffprobe -show_stream_groups` plus an `irot`/`imir` byte scan, run over every genuine
+HEIC. **Zero errors.** It settles items 2, 3 and 4, and corrects run 4 on one point.
+
+| Finding | Value |
+|---|---|
+| Rotation (CCW, from `irot`) | 0°: 240 · 90°: 2 · 180°: 22 · 270°: 311 — reproduces run 4 exactly |
+| `imir` | **absent from all 575.** Item 3 closed: mirroring does not occur in this library |
+| Tile grids per file | 573 have **one**, 2 have two |
+| `nb_tiles` | 17 distinct values, from **9 to 98** |
+| Grid size | mostly 4032x3024, but 3088x2316, 2200x2098, and panoramas up to **11612x3852** |
+
+**Run 4's "every file carries 96 tile streams, two grids" was wrong.** Only two files
+have a second grid, and in both it is exactly half the primary's dimensions —
+3322x2534 / 1661x1267 and 4032x3024 / 2016x1512. That halving is the signature of an
+HDR gain map, so **item 2 is closed too**: the companion grid is not a better primary.
+
+The primary is identified by `disposition.default == 1` on the stream group, which the
+demuxer sets from the container's primary-item box. It is correct on both two-grid
+files. Picking by size or by position would also have worked here, but only by luck.
+
+**The trap the survey exposed, which no sampling would have:**
+`subcomponents[].stream_index` is numbered **relative to its own stream group**, while
+a filtergraph label `[0:N]` needs the file-wide index. The two coincide for group 0 and
+diverge for every group after it — group 1 of `IMG_9564.HEIC` reports tiles `0..11`
+while its streams are `48..59`. Translate through the group's own `streams` array.
+
+Item 4 is closed by the `nb_tiles` spread above: tile geometry varies far more than the
+30-file sample suggested, and nothing about it may be assumed.
+
+### End-to-end validation, same day
+
+40 random files decoded with the algorithm as implemented: **40 correct, 0 failures**,
+median **0.54 s**, worst **1.40 s**. One file per rotation bucket was also rendered and
+looked at — all four upright, no seams, no scrambled tiles. `transpose=1` for 270° CCW
+and `transpose=2` for 90° CCW are both confirmed visually, which a dimension check
+alone cannot do, since either direction produces the same width and height.
+
+## Acceptance test
 
 Whatever decoder wins, the acceptance test is the same, and it is *not* the exit
 code:

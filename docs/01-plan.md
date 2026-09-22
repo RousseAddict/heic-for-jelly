@@ -91,7 +91,7 @@ recipe built on `ffprobe -show_stream_groups`.
 | J2 | Resolver + encoder: HEIC files appear **with thumbnails** on a 10-file folder | most of the technical risk dies here |
 | | *resolver* — done | HEIC files become `Photo` items |
 | | *encoder decoration + ffmpeg version gate* — done, verified live: `Image encoder decorated: "HeicForJelly over Skia"` | the plugin is on the decode path for every image |
-| | *the decode itself* — **next** | ffprobe geometry, `xstack`, crop, `irot` transpose |
+| | *the decode itself* — written, 40/40 correct offline at 0.54 s median; **not yet verified inside Jellyfin** | ffprobe geometry, `xstack`, crop, `irot` transpose |
 | J3 | EXIF to `PremiereDate` — correct order in jellypic | |
 | J4 | Hardening: ignore-files, video-owned images, corrupt files, logging, **and the full-size request that bypasses `EncodeImage` entirely** (see `02` §4) | |
 | J5 | Full library, with measurements | |
