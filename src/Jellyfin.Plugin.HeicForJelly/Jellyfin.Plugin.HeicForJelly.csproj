@@ -25,7 +25,19 @@
       ABI and any 10.x minor can break it; that drift is what froze the prior art at
       10.9. 10.11.6 is the server's own version - see docs/04-j0-spike.md.
     -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
+    <!--
+      ExcludeAssets=runtime keeps Jellyfin's own assemblies out of bin/. The server
+      already has them loaded, and a plugin that ships a second copy fails to
+      register - the types in the zip are not the types the host resolved. Model is
+      listed only so that its runtime assets are excluded too; nothing here uses it
+      directly, and ExcludeAssets does not reach transitive packages.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="10.11.6">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
   </ItemGroup>
 

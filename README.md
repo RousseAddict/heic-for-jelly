@@ -32,6 +32,20 @@ plugin carries no native dependency: it is about 50 KB.
 
 ## Install
 
+Dashboard → Plugins → Repositories → **+**, and add:
+
+```
+https://raw.githubusercontent.com/RousseAddict/heic-for-jelly/main/manifest.json
+```
+
+The plugin then appears under Catalogue → General. Install it and restart the server.
+Updates arrive the same way.
+
+Jellyfin hides any plugin whose `targetAbi` is above the server's own version, so an
+empty catalogue means the server is older than the requirement above.
+
+### From source
+
 Build the DLL, then drop it with `meta.json` into
 `<config>/plugins/HeicForJelly_<version>/` and restart the server.
 

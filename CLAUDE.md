@@ -155,3 +155,27 @@ Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64.
 Building: the dev Mac is Big Sur and no supported .NET runs there, so `tools/build.sh`
 rsyncs to a Monterey box and compiles over ssh. `--deploy` installs the dll into
 Jellyfin but never restarts it — a restart cuts playback, so it stays a manual call.
+
+## Releasing
+
+The repository is also its own Jellyfin plugin catalogue: `manifest.json` at the root
+of `main` is the URL users subscribe to. Cutting a release means editing **meta.json
+only** — `version` and `changelog` — bumping `AssemblyVersion`/`FileVersion` to match,
+then pushing the tag `v<version>` (four segments, e.g. `v1.0.1.0`). The `release`
+workflow builds, zips, publishes a GitHub release and commits the new entry into
+`manifest.json`. It refuses to run if the three versions disagree.
+
+Two invariants it guards, both learned from the official plugin template:
+
+- `Jellyfin.Controller`/`Jellyfin.Model` carry `<ExcludeAssets>runtime</ExcludeAssets>`.
+  Without it the build copies Jellyfin's own assemblies into `bin/`, and a plugin that
+  ships a second copy of the host's types does not register. The Package step fails if
+  more than one dll lands in the output.
+- The zip holds the dll and `meta.json` at its root with no enclosing directory:
+  `InstallationManager.InstallPackageInternal` extracts it straight into the plugin
+  folder, after checking the zip's **MD5** against the manifest's `checksum`.
+
+`targetAbi` stays at the exact version the plugin was built and tested against.
+Jellyfin drops any entry whose `targetAbi` exceeds the running server
+(`InstallationManager.GetPackages`), so lowering it to widen reach would publish a
+claim nobody has verified.

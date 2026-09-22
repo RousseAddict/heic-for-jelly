@@ -1,0 +1,109 @@
+#
+# Publishes a release and updates the plugin repository manifest.
+#
+# Jellyfin installs a plugin by downloading the zip named in manifest.json,
+# checking its MD5 against the "checksum" field, then extracting it straight into
+# the plugin folder (Emby.Server.Implementations/Updates/InstallationManager.cs).
+# So the zip must hold the dll and meta.json at its root with no enclosing
+# directory, and the manifest must be updated in the same run as the release, or
+# every user gets a checksum failure.
+#
+# Trigger: push a tag matching the version in meta.json, prefixed with "v".
+# meta.json carries four segments, so the tag does too:
+#
+#     git tag v1.0.0.0 && git push origin v1.0.0.0
+#
+# Everything published is derived from meta.json - name, changelog, targetAbi -
+# so there is exactly one file to edit when cutting a release.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      META: src/Jellyfin.Plugin.HeicForJelly/meta.json
+      CSPROJ: src/Jellyfin.Plugin.HeicForJelly/Jellyfin.Plugin.HeicForJelly.csproj
+      OUT: src/Jellyfin.Plugin.HeicForJelly/bin/Release/net9.0
+
+    steps:
+      # Full history: the last step commits to main, and pushing from a shallow
+      # clone is a needless way to lose a release at the finish line.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      # A tag that disagrees with meta.json would publish a zip whose version is
+      # not the one Jellyfin compares on upgrade, so the plugin would never offer
+      # the update. Cheaper to fail here than to yank a release.
+      - name: Check the tag, meta.json and assembly version agree
+        run: |
+          set -eu
+          version=$(python3 -c "import json,os;print(json.load(open(os.environ['META']))['version'])")
+          [ "$GITHUB_REF_NAME" = "v$version" ] || {
+            echo "tag $GITHUB_REF_NAME does not match meta.json version $version" >&2
+            exit 1
+          }
+          grep -q "<AssemblyVersion>$version</AssemblyVersion>" "$CSPROJ" || {
+            echo "AssemblyVersion in $CSPROJ does not match meta.json version $version" >&2
+            exit 1
+          }
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: dotnet build "$CSPROJ" -c Release
+
+      # The build must produce our assembly alone. A Jellyfin.* dll appearing here
+      # means ExcludeAssets has been lost from the csproj, and a plugin that ships
+      # its own copy of the host's types does not register.
+      - name: Package
+        run: |
+          set -eu
+          [ "$(ls "$OUT"/*.dll | wc -l)" -eq 1 ] || {
+            echo "unexpected assemblies in the build output:" >&2
+            ls "$OUT"/*.dll >&2
+            exit 1
+          }
+          mkdir -p dist
+          cp "$OUT/Jellyfin.Plugin.HeicForJelly.dll" "$META" dist/
+          (cd dist && zip -X "../heic-for-jelly_$version.zip" \
+            Jellyfin.Plugin.HeicForJelly.dll meta.json)
+          echo "checksum=$(md5sum "heic-for-jelly_$version.zip" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          notes=$(python3 -c "import json,os;print(json.load(open(os.environ['META']))['changelog'])")
+          gh release create "$GITHUB_REF_NAME" "heic-for-jelly_$version.zip" \
+            --title "$GITHUB_REF_NAME" --notes "$notes"
+
+      # Committed to main rather than to the tag: the manifest is a live catalogue
+      # and the URL users subscribe to points at main. The script replaces an
+      # existing entry for the same version, so re-running a release is harmless.
+      - name: Update the manifest
+        run: |
+          set -eu
+          git checkout -B main origin/main
+          tools/publish-manifest.py \
+            --version "$version" \
+            --checksum "$checksum" \
+            --url "${{ github.server_url }}/${{ github.repository }}/releases/download/$GITHUB_REF_NAME/heic-for-jelly_$version.zip"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Publish $version to the plugin manifest" manifest.json
+          git push origin main

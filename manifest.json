@@ -1,0 +1,11 @@
+[
+  {
+    "guid": "e0ca1e89-983f-495a-a3ce-7dba998cb21e",
+    "name": "HEIC for Jelly",
+    "description": "Makes HEIC/HEIF photos visible and renderable in a Jellyfin photo library.",
+    "overview": "Adds HEIC support to photo libraries.",
+    "owner": "jf",
+    "category": "General",
+    "versions": []
+  }
+]
