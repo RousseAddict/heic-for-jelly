@@ -119,6 +119,6 @@ container's `irot` box, which ffprobe does not expose. Roughly 100 lines of geom
 plumbing rather than a one-line shell-out. Skia still resizes and encodes; that part
 of §3 stands.
 
-Magick.NET remains the alternative and is now *less* obviously worse, since libheif
-handles grid and rotation natively. Benchmark before committing, and security-scan it
-first.
+Magick.NET was the alternative, and **it was evaluated and rejected on 2026-09-21** —
+scan clean, capability never settled, and it decodes in-process. Full reasoning in
+`03-prior-art.md` §4. The decoder is ffmpeg; treat that as closed.
