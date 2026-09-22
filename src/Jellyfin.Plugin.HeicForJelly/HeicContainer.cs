@@ -4,8 +4,8 @@ using System.IO;
 namespace Jellyfin.Plugin.HeicForJelly;
 
 /// <summary>
-/// Reads the few container bytes that decide whether a file really is HEIF, and which way up it
-/// is meant to be shown.
+/// Reads the head of a HEIF file: whether it really is one, which way up it is meant to be shown,
+/// and the EXIF block behind it.
 /// </summary>
 /// <remarks>
 /// Both questions exist because the tools below cannot answer them. The extension lies — J0 found
@@ -26,6 +26,46 @@ internal static class HeicContainer
     /// the byte scan below can wander into compressed data.
     /// </remarks>
     private const int HeaderBytes = 256 * 1024;
+
+    /// <summary>
+    /// How far into a file to keep looking for the EXIF marker before giving up.
+    /// </summary>
+    /// <remarks>
+    /// The furthest of the 575 files surveyed hides it 2.5 MB in, so this is that with room to
+    /// spare. It exists at all so that a file whose EXIF was stripped, or one that is not really
+    /// HEIF behind a <c>.heic</c> name, costs a bounded read rather than a full pass over what may
+    /// be a 100 MB file on a network mount.
+    /// </remarks>
+    private const long ExifSearchLimit = 8L * 1024 * 1024;
+
+    /// <summary>
+    /// An EXIF block: the marker, then a big-endian TIFF header.
+    /// </summary>
+    /// <remarks>
+    /// The TIFF header is part of the pattern, not a check made afterwards, because
+    /// <c>Exif\0\0</c> on its own is <b>not</b> unique within the file. It also appears about a
+    /// kilobyte in, inside the <c>infe</c> box that declares the item's type — the first draft of
+    /// this matched there, seeked to the <c>iref</c> box that follows, and found no EXIF anywhere
+    /// in the library. Requiring the byte-order mark and the constant 42 immediately after the
+    /// marker distinguishes the declaration from the payload in one pass.
+    /// </remarks>
+    private static readonly byte[] BigEndianExifBlock =
+    {
+        (byte)'E', (byte)'x', (byte)'i', (byte)'f', 0, 0, (byte)'M', (byte)'M', 0, 42,
+    };
+
+    /// <summary>
+    /// The same, for a little-endian TIFF header.
+    /// </summary>
+    /// <remarks>
+    /// Every one of the 575 files surveyed is big-endian, as Apple writes them. This is here
+    /// because the format permits the other order and skipping it would mean a camera that takes
+    /// TIFF's word for it silently loses its dates.
+    /// </remarks>
+    private static readonly byte[] LittleEndianExifBlock =
+    {
+        (byte)'E', (byte)'x', (byte)'i', (byte)'f', 0, 0, (byte)'I', (byte)'I', 42, 0,
+    };
 
     /// <summary>
     /// The brands that mean "HEVC still image in an ISO base media container".
@@ -73,14 +113,139 @@ internal static class HeicContainer
         rotationDegrees = 0;
         mirrored = false;
 
-        byte[] head;
-        int length;
+        if (!TryReadHead(path, out var head))
+        {
+            return false;
+        }
+
+        var span = head.Span;
+
+        if (!IsHeif(span))
+        {
+            return false;
+        }
+
+        rotationDegrees = ReadRotationDegrees(span);
+        mirrored = HasBox(span, "imir");
+        return true;
+    }
+
+    /// <summary>
+    /// Finds a file's EXIF block and parses it.
+    /// </summary>
+    /// <param name="path">The file to inspect.</param>
+    /// <returns>The EXIF fields, or <c>null</c> when the file is not HEIF or carries no EXIF.</returns>
+    /// <remarks>
+    /// <para>
+    /// The block is found by its marker rather than by walking <c>meta</c>, <c>iinf</c> and
+    /// <c>iloc</c> to the Exif item. That walk is the textbook route and it is several times the
+    /// code; the marker is exact enough not to need it, because what is matched is the six bytes
+    /// <c>Exif\0\0</c> <em>followed by a well-formed TIFF header</em> — a byte-order mark and the
+    /// constant 42. All 575 files surveyed carry it, in that exact form.
+    /// </para>
+    /// <para>
+    /// The search runs over the file in windows instead of one buffer, because it has to: in ten
+    /// of those files — the panoramas — the marker sits between 0.5 and 2.5 MB in, well past any
+    /// head worth holding in memory for the other 565.
+    /// </para>
+    /// </remarks>
+    public static HeicExif? ReadExif(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+
+            var buffer = new byte[HeaderBytes];
+            var carried = 0;
+            long windowStart = 0;
+            var brandChecked = false;
+
+            while (windowStart + carried < ExifSearchLimit)
+            {
+                var filled = carried + stream.ReadAtLeast(buffer.AsSpan(carried), HeaderBytes - carried, throwOnEndOfStream: false);
+                var window = buffer.AsSpan(0, filled);
+
+                if (!brandChecked)
+                {
+                    if (!IsHeif(window))
+                    {
+                        return null;
+                    }
+
+                    brandChecked = true;
+                }
+
+                var index = IndexOfExifBlock(window);
+
+                if (index >= 0)
+                {
+                    // The block can start anywhere in the window, including its last bytes, so it
+                    // is read afresh from the file rather than sliced out of what is here.
+                    stream.Position = windowStart + index;
+                    var block = new byte[HeaderBytes];
+                    var length = stream.ReadAtLeast(block, HeaderBytes, throwOnEndOfStream: false);
+                    return HeicExif.Parse(block.AsSpan(0, length));
+                }
+
+                if (filled < HeaderBytes)
+                {
+                    return null;
+                }
+
+                // Carry the tail forward, or a block straddling two windows is found by neither.
+                carried = BigEndianExifBlock.Length - 1;
+                window[^carried..].CopyTo(buffer);
+                windowStart += filled - carried;
+            }
+
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Finds where the TIFF header of an EXIF block starts within a window.
+    /// </summary>
+    /// <param name="window">The bytes to search.</param>
+    /// <returns>The offset of the TIFF header, or -1.</returns>
+    private static int IndexOfExifBlock(ReadOnlySpan<byte> window)
+    {
+        var index = window.IndexOf(BigEndianExifBlock);
+
+        if (index < 0)
+        {
+            index = window.IndexOf(LittleEndianExifBlock);
+        }
+
+        // Past the marker, onto the byte-order mark, which is where every offset in the block is
+        // measured from.
+        return index < 0 ? -1 : index + 6;
+    }
+
+    /// <summary>
+    /// Reads the first <see cref="HeaderBytes"/> of a file, or as much of it as exists.
+    /// </summary>
+    /// <param name="path">The file to read.</param>
+    /// <param name="head">Set to the bytes read.</param>
+    /// <returns><c>true</c> when the file could be opened and read.</returns>
+    private static bool TryReadHead(string path, out ReadOnlyMemory<byte> head)
+    {
+        head = default;
 
         try
         {
             using var stream = File.OpenRead(path);
-            head = new byte[HeaderBytes];
-            length = stream.ReadAtLeast(head, HeaderBytes, throwOnEndOfStream: false);
+            var buffer = new byte[HeaderBytes];
+            var length = stream.ReadAtLeast(buffer, HeaderBytes, throwOnEndOfStream: false);
+            head = buffer.AsMemory(0, length);
+            return true;
         }
         catch (IOException)
         {
@@ -92,17 +257,6 @@ internal static class HeicContainer
         {
             return false;
         }
-
-        var span = head.AsSpan(0, length);
-
-        if (!IsHeif(span))
-        {
-            return false;
-        }
-
-        rotationDegrees = ReadRotationDegrees(span);
-        mirrored = HasBox(span, "imir");
-        return true;
     }
 
     /// <summary>
