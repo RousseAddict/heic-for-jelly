@@ -9,8 +9,11 @@ artifacts/
 *.zip
 *.nupkg
 
-# Spike scratch. Deliberately not *.png: the plugin ships a thumb.png.
+# Spike scratch.
 scratch/
+
+# Machine names for tools/build.sh. Nobody else's business; see build.env.example.
+tools/build.env
 
 # Editor / OS
 .vs/

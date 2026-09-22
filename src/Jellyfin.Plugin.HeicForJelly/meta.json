@@ -7,5 +7,5 @@
   "category": "General",
   "version": "1.0.0.0",
   "targetAbi": "10.11.6.0",
-  "changelog": "J1: skeleton only. Loads and registers; decodes nothing yet."
+  "changelog": "First working release. HEIC/HEIF photos resolve into Photo items, decode through the server's own ffmpeg (tile grids included, with the container's irot rotation applied), and carry their EXIF date, camera and GPS. Requires ffmpeg 7.0 or newer."
 }

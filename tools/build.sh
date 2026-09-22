@@ -10,13 +10,26 @@
 # Usage:
 #   sh tools/build.sh              # sync + build
 #   sh tools/build.sh --deploy     # sync + build + copy into Jellyfin (no restart)
+#
+# Both machines are named by environment variable, with no default: the addresses
+# are somebody's private network and do not belong in a published repository. Copy
+# tools/build.env.example to tools/build.env, which is gitignored and sourced below.
 
 set -eu
 
-BUILD_HOST=${BUILD_HOST:-the build host}
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+# Only consulted for what the environment has not already set, so that a one-off
+# `JELLYFIN_HOST=… sh tools/build.sh --deploy` still wins over the file.
+if [ -z "${BUILD_HOST:-}" ] || [ -z "${JELLYFIN_HOST:-}" ]; then
+    # shellcheck source=/dev/null
+    [ -f "$repo/tools/build.env" ] && . "$repo/tools/build.env"
+fi
+
 BUILD_DIR=${BUILD_DIR:-'~/build/heic-for-jelly'}
-JELLYFIN_HOST=${JELLYFIN_HOST:-the photo host}
 JELLYFIN_PLUGINS=${JELLYFIN_PLUGINS:-'~/Documents/jellyfin/config/plugins'}
+
+: "${BUILD_HOST:?set BUILD_HOST (user@host of a machine with .NET 9) — see tools/build.env.example}"
 
 PLUGIN=Jellyfin.Plugin.HeicForJelly
 VERSION=1.0.0.0
@@ -25,8 +38,6 @@ OUT="src/$PLUGIN/bin/Release/net9.0/$PLUGIN.dll"
 
 deploy=0
 [ "${1:-}" = "--deploy" ] && deploy=1
-
-repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 echo "==> sync to $BUILD_HOST"
 rsync -az --delete \
@@ -40,6 +51,8 @@ export DOTNET_CLI_TELEMETRY_OPTOUT=1
 cd $BUILD_DIR && dotnet build '$PROJ' -c Release"
 
 [ "$deploy" -eq 1 ] || exit 0
+
+: "${JELLYFIN_HOST:?set JELLYFIN_HOST (user@host running Jellyfin) — see tools/build.env.example}"
 
 # Jellyfin discovers plugins by folder, and the folder name carries the version.
 target="$JELLYFIN_PLUGINS/HeicForJelly_$VERSION"
