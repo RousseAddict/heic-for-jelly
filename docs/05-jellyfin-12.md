@@ -192,8 +192,8 @@ on 10.11 and renders on 12 — a gain, not a regression.
 ## 7. Noticed along the way
 
 - **Docker Hub's `jellyfin/jellyfin:latest` has pointed at 12.4 since 2026-10-26.** A
-  server running from `latest` — the photo host's is — jumps to 12 at the next pull and
-  recreate, and the database migration is one-way. Pin a tag and upgrade on purpose.
+  server running from `latest` jumps to 12 at the next pull and recreate, and the
+  database migration is one-way. Pin a tag and upgrade on purpose.
 - **The library grew from 575 to 884 HEIC**, 290 of them in a new `2026/2026-MM/` layout
   with a different naming scheme. ffmpeg reads a tile grid in all of them, so no
   mislabelled JPEG came with this batch.

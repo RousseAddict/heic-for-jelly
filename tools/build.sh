@@ -64,8 +64,15 @@ ssh "$BUILD_HOST" "cat $BUILD_DIR/$OUT" |
 ssh "$BUILD_HOST" "cat $BUILD_DIR/src/$PLUGIN/meta.json" |
     ssh "$JELLYFIN_HOST" "cat > $target/meta.json"
 
+# The restart command depends on how the server runs Jellyfin, so it comes from
+# tools/build.env rather than being guessed: under a podman quadlet, for one,
+# `podman restart` goes behind systemd's back and is the wrong call.
 echo
-echo "Installed. Jellyfin loads plugins at startup only, so it must be restarted:"
-echo "    ssh $JELLYFIN_HOST 'podman restart jellyfin'"
+echo "Installed. Jellyfin loads plugins at startup only, so it must be restarted."
+if [ -n "${JELLYFIN_RESTART:-}" ]; then
+    echo "    ssh $JELLYFIN_HOST '$JELLYFIN_RESTART'"
+else
+    echo "Set JELLYFIN_RESTART in tools/build.env to have the exact command printed here."
+fi
 echo "That interrupts any playback in progress, which is why this script will not"
 echo "do it for you."

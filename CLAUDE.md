@@ -170,10 +170,7 @@ the prior art at 10.9.
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two
 runs astray.
 
-Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64. Its container
-runs from the `jellyfin/jellyfin:latest` tag, which upstream moved to **12.4** on
-2026-10-26: the next pull + recreate upgrades it, one way. Test instances are built from
-an image pinned by digest, on a fresh config, published on `127.0.0.1` only.
+Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64.
 
 Building: the dev Mac is Big Sur and no supported .NET runs there, so `tools/build.sh`
 rsyncs to a Monterey box and compiles over ssh. `--deploy` installs the dll into
