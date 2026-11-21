@@ -243,3 +243,14 @@ Sizing, for a library this shape: thumbnails cost ~136 KB each, full-size render
 **The tail is the panoramas.** The 3.33 s maximum is the 15736x3852 file, a 98-tile
 grid — 3.6× the median, and the same shape of outlier as J4's 16 s at full size. A
 library of panoramas would be a different report; this one has ten.
+
+## 13. Jellyfin 12, checked 2026-11-20
+
+§5 named ABI drift first. Jellyfin 12 was its first real test, and **it did not
+materialise**: the published 1.0.0.0 zip, built against 10.11.6 on net9.0, loads on
+12.4 and reproduces production on every HEIC in the library — now 884 of them. No code
+changed; the csproj gained a `JellyfinVersion`/`JellyfinTargetFramework` pair so that
+`compat.yml` can compile the same source against 12.4 on every push.
+
+The evidence, and the one condition that would force a second build, are in
+`05-jellyfin-12.md`.

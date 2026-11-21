@@ -2,11 +2,24 @@
 
   <PropertyGroup>
     <!--
+      The Jellyfin ABI the shipped binary is compiled against, and the framework that
+      ABI requires. The release always builds with these defaults, and that one binary
+      serves both 10.11 and 12: Jellyfin treats targetAbi as a floor, .NET 10 runs a
+      net9.0 assembly, and every API used here is unchanged in 12.4. See
+      docs/05-jellyfin-12.md.
+
+      The compat workflow overrides both properties to check that the same source
+      still compiles against a newer server. They travel as a pair, and the framework
+      cannot be overridden through TargetFramework itself: NuGet restore drops that
+      global property, then restores for the framework written here and fails NU1202.
+
       net9.0, not net8.0: Jellyfin 10.11 moved to .NET 9. The server's
       jellyfin.runtimeconfig.json declares tfm net9.0 with runtime 9.0.12, and
       Jellyfin.Controller 10.11.6 ships no net8.0 asset at all.
     -->
-    <TargetFramework>net9.0</TargetFramework>
+    <JellyfinVersion Condition="'$(JellyfinVersion)' == ''">10.11.6</JellyfinVersion>
+    <JellyfinTargetFramework Condition="'$(JellyfinTargetFramework)' == ''">net9.0</JellyfinTargetFramework>
+    <TargetFramework>$(JellyfinTargetFramework)</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -32,10 +45,10 @@
       listed only so that its runtime assets are excluded too; nothing here uses it
       directly, and ExcludeAssets does not reach transitive packages.
     -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.6">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jellyfin.Model" Version="10.11.6">
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />

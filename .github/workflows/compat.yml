@@ -1,0 +1,63 @@
+#
+# Checks that the source still compiles against every Jellyfin ABI the single
+# shipped binary claims to serve.
+#
+# The release builds one dll, against 10.11.6 on net9.0, and that same dll runs on
+# Jellyfin 12: targetAbi is a floor and not a ceiling, .NET 10 runs a net9.0
+# assembly, and every API this plugin touches is unchanged in 12.4. The evidence is
+# in docs/05-jellyfin-12.md.
+#
+# What this job catches is the day that stops being true at source level: an
+# interface member added, a type moved, a signature changed. It does NOT prove
+# binary compatibility. A parameter that gains a default value - 12.4 did exactly
+# that to BaseItem.GetExtras - compiles cleanly against the new server and still
+# throws MissingMethodException from the old binary. Only loading the shipped dll
+# into a real server proves that, which is the manual check in docs/05 §4.
+#
+# Versions are pinned, never floated. A new Jellyfin.Controller is third-party code
+# and gets scanned before it is used (CLAUDE.md), so bump the 12.x row on purpose,
+# after the scan, never by letting NuGet pick.
+
+name: compat
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # What the release ships. Redundant with the release build on purpose: it
+          # fails on the commit that breaks it rather than on the tag.
+          - jellyfin: 10.11.6
+            framework: net9.0
+            sdk: 9.0.x
+          - jellyfin: 12.4.0
+            framework: net10.0
+            sdk: 10.0.x
+
+    name: Jellyfin ${{ matrix.jellyfin }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.sdk }}
+
+      # Both properties travel together. TargetFramework cannot be passed directly:
+      # NuGet restore drops that global property and restores for the csproj's own
+      # framework, which fails NU1202 against a net10.0-only package.
+      - name: Build
+        run: >
+          dotnet build src/Jellyfin.Plugin.HeicForJelly/Jellyfin.Plugin.HeicForJelly.csproj
+          -c Release
+          -p:JellyfinVersion=${{ matrix.jellyfin }}
+          -p:JellyfinTargetFramework=${{ matrix.framework }}

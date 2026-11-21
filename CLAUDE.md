@@ -27,6 +27,7 @@ docs/
   02-jellyfin-internals.md   verified source facts (v10.11.0) + file:symbol refs
   03-prior-art.md            existing plugins, security audit, upstream status
   04-j0-spike.md             the decoder spike: results, next commands, branches
+  05-jellyfin-12.md          Jellyfin 12: why one binary serves 10.11 and 12, the live test
 ```
 
 ## Ground rules
@@ -142,19 +143,45 @@ re-request is 0.038 s — the cost is paid once per photo per size, and a librar
 avoids it entirely because `GetImageSize` answers from the probe. Cache: 78 MB for the
 575 thumbnails, ~5 MB per full-size render. `docs/01-plan.md` §12.
 
-The remaining risk is the one §5 of the plan named first and J5 cannot retire: **ABI
-drift**. The plugin pins `Jellyfin.Controller` 10.11.6, and any 10.x minor can break
-it. That is what froze the prior art at 10.9.
+**Jellyfin 12 is supported by the same binary, checked 2026-11-20.** 12.0 shipped on
+2026-09-08 (net10.0, ffmpeg 8.1). Every API the plugin touches is unchanged in 12.4, and
+the published 1.0.0.0 zip, installed unmodified from the catalogue into a 12.4 test
+server, reproduced production 10.11.6 on all 884 HEIC: dimensions, 14 metadata fields,
+884 thumbnails, 68 full-size renders, the corrupt corpus, 0 warnings. Full record in
+`docs/05-jellyfin-12.md`. Three things from it that will bite again:
+
+- **`targetAbi` is a floor, never a ceiling.** A 10.11.6.0 entry is offered to, and
+  loaded by, every newer server. That is what makes one binary work — and it means an
+  untested Jellyfin major gets the plugin anyway.
+- **A successful compile against a new Jellyfin proves nothing about the old binary.**
+  A parameter gaining a default value is source-compatible and binary-breaking.
+  `compat.yml` catches source breaks; only loading the shipped zip into the new server
+  proves the rest.
+- **Photo libraries are `collectionType=homevideos` + `EnablePhotos`.** `photos` is not
+  accepted by `POST /Library/VirtualFolders` and silently yields a library with no
+  `Photo` item at all.
+
+The remaining risk is still **ABI drift**, now per major: a future 12.x or 13 can break
+the old binary while 10.11 still matters. Then, and only then, release two builds —
+`docs/05` §6 says how without the manifest entries colliding. That drift is what froze
+the prior art at 10.9.
 
 **Read `docs/04-j0-spike.md` before anything else.** Never benchmark on
 `IMG_2719`/`IMG_2720` — they are mislabelled JPEGs and are what sent the first two
 runs astray.
 
-Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64.
+Server: Jellyfin **10.11.6** under podman, jellyfin-ffmpeg **7.1.3**, amd64. Its container
+runs from the `jellyfin/jellyfin:latest` tag, which upstream moved to **12.4** on
+2026-10-26: the next pull + recreate upgrades it, one way. Test instances are built from
+an image pinned by digest, on a fresh config, published on `127.0.0.1` only.
 
 Building: the dev Mac is Big Sur and no supported .NET runs there, so `tools/build.sh`
 rsyncs to a Monterey box and compiles over ssh. `--deploy` installs the dll into
 Jellyfin but never restarts it — a restart cuts playback, so it stays a manual call.
+The build is deterministic: the same source gives the same dll MD5, which is how a
+build-plumbing change can be shown not to touch the shipped binary. The csproj takes
+`JellyfinVersion` and `JellyfinTargetFramework` as a pair (defaults 10.11.6 / net9.0);
+never override `TargetFramework` directly — NuGet restore drops it and fails NU1202.
 
 ## Releasing
 
@@ -178,4 +205,9 @@ Two invariants it guards, both learned from the official plugin template:
 `targetAbi` stays at the exact version the plugin was built and tested against.
 Jellyfin drops any entry whose `targetAbi` exceeds the running server
 (`InstallationManager.GetPackages`), so lowering it to widen reach would publish a
-claim nobody has verified.
+claim nobody has verified. It never drops one for being lower, so the same entry is what
+Jellyfin 12 installs; the claim that this works lives in the README, backed by `docs/05`.
+
+`.github/workflows/compat.yml` builds the source against every ABI the binary claims —
+10.11.6/net9.0 and 12.4.0/net10.0 — on each push. Its versions are pinned; a new
+`Jellyfin.Controller` is scanned before its row is bumped.

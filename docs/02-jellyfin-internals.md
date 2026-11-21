@@ -3,6 +3,13 @@
 All of it read from the **`v10.11.0`** tag (and `master` where noted), 2026-09-20.
 Citations are `file:symbol`. Re-verify against the tag the plugin ends up targeting.
 
+**Re-verified against `v12.4` on 2026-11-20.** Nothing below that the plugin depends on
+changed. `PhotoResolver.cs`, `PhotoProvider.cs`, `IImageEncoder.cs` and `CoreAppHost.cs`
+are byte-identical files; `ImageProcessor.ProcessImage` and `SkiaEncoder.EncodeImage` are
+identical methods inside files that changed elsewhere. Both short-circuits of §4a, the
+`Orientation` rule of §5a and the refresh gating of §5b therefore hold on Jellyfin 12.
+The full diff is in `05-jellyfin-12.md` §2.
+
 ## 1. Why HEIC is invisible
 
 `Emby.Server.Implementations/Library/Resolvers/PhotoResolver.cs:IsImageFile` gates on

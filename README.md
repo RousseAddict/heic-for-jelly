@@ -25,10 +25,14 @@ plugin carries no native dependency: it is about 50 KB.
 
 ## Requirements
 
-- Jellyfin **10.11.6** (the ABI is pinned; any 10.x minor can break a plugin)
+- Jellyfin **10.11.6 or later, including 12**. One binary serves both: it is compiled
+  against 10.11.6 and has been run on **10.11.6 and 12.4** against the same library,
+  with identical results ([docs/05](docs/05-jellyfin-12.md)). A future Jellyfin can
+  still break a plugin, so each new major is tested before it is claimed here.
 - **ffmpeg 7.0+** — the first release that demuxes HEIF still images. Jellyfin itself
   accepts 4.4, so a healthy server can still be too old; the plugin checks once at
-  startup and says so in the log.
+  startup and says so in the log. Jellyfin 12 ships ffmpeg 8.1, which works, and in the
+  test library opened one file that ffmpeg 7 rejects.
 
 ## Install
 
@@ -42,7 +46,9 @@ The plugin then appears under Catalogue → General. Install it and restart the 
 Updates arrive the same way.
 
 Jellyfin hides any plugin whose `targetAbi` is above the server's own version, so an
-empty catalogue means the server is older than the requirement above.
+empty catalogue means the server is older than the requirement above. It never hides
+one for being *older* than the server, which is why the same entry appears on 10.11
+and 12.
 
 ### From source
 
@@ -55,6 +61,15 @@ over ssh. Copy `tools/build.env.example` to `tools/build.env` and fill in your h
 ```sh
 sh tools/build.sh              # sync + build
 sh tools/build.sh --deploy     # + install into Jellyfin (never restarts it)
+```
+
+The binary to ship is the default build. To check that the source also compiles
+against a newer server, override the ABI and its framework together — this is what
+`.github/workflows/compat.yml` does on every push:
+
+```sh
+dotnet build src/Jellyfin.Plugin.HeicForJelly -c Release \
+    -p:JellyfinVersion=12.4.0 -p:JellyfinTargetFramework=net10.0
 ```
 
 ## Notes
