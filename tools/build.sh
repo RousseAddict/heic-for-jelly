@@ -32,7 +32,10 @@ JELLYFIN_PLUGINS=${JELLYFIN_PLUGINS:-'~/Documents/jellyfin/config/plugins'}
 : "${BUILD_HOST:?set BUILD_HOST (user@host of a machine with .NET 9) — see tools/build.env.example}"
 
 PLUGIN=Jellyfin.Plugin.HeicForJelly
-VERSION=1.0.0.0
+# Read from meta.json, the one file a release edits, so that a version bump cannot
+# leave this script deploying a new dll into a folder named after the old version.
+VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$repo/src/$PLUGIN/meta.json")
+: "${VERSION:?could not read the version from src/$PLUGIN/meta.json}"
 PROJ="src/$PLUGIN/$PLUGIN.csproj"
 OUT="src/$PLUGIN/bin/Release/net9.0/$PLUGIN.dll"
 

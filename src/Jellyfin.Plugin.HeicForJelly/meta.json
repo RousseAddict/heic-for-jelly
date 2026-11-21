@@ -5,7 +5,7 @@
   "overview": "Adds HEIC support to photo libraries.",
   "owner": "jf",
   "category": "General",
-  "version": "1.0.0.0",
+  "version": "1.0.1.0",
   "targetAbi": "10.11.6.0",
-  "changelog": "First working release. HEIC/HEIF photos resolve into Photo items, decode through the server's own ffmpeg (tile grids included, with the container's irot rotation applied), and carry their EXIF date, camera and GPS. Requires ffmpeg 7.0 or newer."
+  "changelog": "Jellyfin 12 support confirmed. The same build runs on Jellyfin 10.11.6 and 12.4, verified on a real library: every HEIC resolves, renders and keeps its EXIF identically on both. Jellyfin 12's ffmpeg 8.1 can also open HEICs that ffmpeg 7 rejects. No change in behaviour on 10.11. Requires Jellyfin 10.11.6 or later and ffmpeg 7.0 or newer."
 }
