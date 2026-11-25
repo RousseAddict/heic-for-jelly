@@ -65,6 +65,11 @@ The middleware exists only because the plugin has no decoder in the image pipeli
 Decorating `IImageEncoder` instead removes the need for an endpoint, and with it the
 whole class of vulnerability — **by construction, not by patch**.
 
+1.1.0.0 adds one route, `GET /HeicForJelly/Status`, and it does not reopen this: it is
+authenticated, takes no input, serves no file and touches no path. What made `heicext`
+dangerous was an endpoint that served images, not the existence of an endpoint.
+`06-status-endpoint.md` §6.
+
 ## 3. `great-horn/jellyfin-plugin-immich-albums`
 
 Syncs Immich albums into Jellyfin via symlinks, converting HEIC to JPEG on the way.

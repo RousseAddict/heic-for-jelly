@@ -16,8 +16,10 @@ thumbnail.
   guards (ignored filenames, collection type, images owned by a sibling video).
 - Decodes them by **decorating `IImageEncoder`**, so Jellyfin's auth, per-library
   permissions, resized-image cache, ETags and encoding concurrency limit all keep
-  applying. No HTTP endpoint is added.
+  applying. No endpoint serves, converts or even names an image.
 - Reads EXIF into `PremiereDate`, camera, exposure and GPS, so the timeline sorts.
+- Answers one read-only status route, so that a client can tell whether HEIC will
+  render on this server — see [Status](#status).
 
 Decoding runs **out of process**, through the `ffmpeg` the server already ships.
 Nothing parses attacker-influenced image data inside the Jellyfin process, and the
@@ -31,8 +33,38 @@ plugin carries no native dependency: it is about 50 KB.
   still break a plugin, so each new major is tested before it is claimed here.
 - **ffmpeg 7.0+** — the first release that demuxes HEIF still images. Jellyfin itself
   accepts 4.4, so a healthy server can still be too old; the plugin checks once at
-  startup and says so in the log. Jellyfin 12 ships ffmpeg 8.1, which works, and in the
-  test library opened one file that ffmpeg 7 rejects.
+  startup and says so in the log, and in the status route. Jellyfin 12 ships ffmpeg 8.1,
+  which works, and in the test library opened one file that ffmpeg 7 rejects.
+
+## Status
+
+```
+GET /HeicForJelly/Status
+```
+
+Any signed-in user may call it (an API key too); an anonymous call gets 401. It takes no
+parameters and answers from memory:
+
+```json
+{ "decoding": true }
+{ "decoding": false, "reason": "FFMPEG_TOO_OLD" }
+```
+
+| `reason` | Meaning |
+|---|---|
+| `FFMPEG_TOO_OLD` | the server's ffmpeg predates 7.0 |
+| `FFMPEG_MISSING` | the server reports no ffmpeg version |
+| `ENCODER_NOT_DECORATED` | the plugin loaded but is not in the image pipeline |
+
+`reason` is absent when decoding is on. Treat a code you do not know as "off". A **404**
+means the plugin is not installed, or is a 1.0.x release, which has no route; a 503 means
+the server is still starting. Neither the ffmpeg version nor its path is ever returned —
+the server log has both.
+
+This is the plugin's only HTTP route. It exists because a non-administrator cannot list
+plugins, and it takes no input and serves no file, so images still go through Jellyfin's
+own pipeline only. Why that keeps it safe, and the source checks behind it:
+[docs/06](docs/06-status-endpoint.md).
 
 ## Install
 

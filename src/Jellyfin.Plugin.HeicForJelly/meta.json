@@ -5,7 +5,7 @@
   "overview": "Adds HEIC support to photo libraries.",
   "owner": "jf",
   "category": "General",
-  "version": "1.0.1.0",
+  "version": "1.1.0.0",
   "targetAbi": "10.11.6.0",
-  "changelog": "Jellyfin 12 support confirmed. The same build runs on Jellyfin 10.11.6 and 12.4, verified on a real library: every HEIC resolves, renders and keeps its EXIF identically on both. Jellyfin 12's ffmpeg 8.1 can also open HEICs that ffmpeg 7 rejects. No change in behaviour on 10.11. Requires Jellyfin 10.11.6 or later and ffmpeg 7.0 or newer."
+  "changelog": "Adds GET /HeicForJelly/Status, a read-only route any signed-in user can call to learn whether this server decodes HEIC and, if not, why (ffmpeg too old or missing). It takes no input and serves no image; photos still go through Jellyfin's own image pipeline only. No change in how photos are resolved, decoded or dated. Requires Jellyfin 10.11.6 or later and ffmpeg 7.0 or newer."
 }

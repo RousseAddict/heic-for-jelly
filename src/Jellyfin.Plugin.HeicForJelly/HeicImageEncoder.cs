@@ -46,7 +46,7 @@ public class HeicImageEncoder : IImageEncoder
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<HeicImageEncoder> _logger;
     private readonly HeicDecoder _decoder;
-    private readonly Lazy<bool> _canDecodeHeic;
+    private readonly Lazy<HeicDecodingState> _decodingState;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HeicImageEncoder"/> class.
@@ -66,7 +66,7 @@ public class HeicImageEncoder : IImageEncoder
 
         // Deliberately lazy. MediaEncoder.EncoderVersion is null until the server validates
         // ffmpeg during startup, and this encoder may well be constructed before that happens.
-        _canDecodeHeic = new Lazy<bool>(CheckFfmpeg);
+        _decodingState = new Lazy<HeicDecodingState>(CheckFfmpeg);
 
         // The one line that proves the decoration took effect. Without it a failed swap is
         // indistinguishable from a working one, since the server logs only that the plugin
@@ -84,9 +84,21 @@ public class HeicImageEncoder : IImageEncoder
     /// needed as well. Verified in <c>ImageProcessor.cs:SupportedInputFormats</c> at v10.11.6.
     /// </remarks>
     public IReadOnlyCollection<string> SupportedInputFormats =>
-        _canDecodeHeic.Value
+        CanDecodeHeic
             ? _inner.SupportedInputFormats.Concat(new[] { "heic", "heif" }).ToArray()
             : _inner.SupportedInputFormats;
+
+    /// <summary>
+    /// Gets whether HEIC decoding is on, and if not, why.
+    /// </summary>
+    /// <remarks>
+    /// This is what <c>GET /HeicForJelly/Status</c> reports, and it is the same lazily taken
+    /// decision that gates <see cref="GetImageSize"/> and <see cref="EncodeImage"/>, so the
+    /// endpoint cannot disagree with the decoder. Reading it can be the first evaluation; that is
+    /// safe from an HTTP request, because the server answers every request with 503 until ffmpeg
+    /// has been validated (<c>docs/06-status-endpoint.md</c> §4).
+    /// </remarks>
+    public HeicDecodingState DecodingState => _decodingState.Value;
 
     /// <inheritdoc />
     public IReadOnlyCollection<ImageFormat> SupportedOutputFormats => _inner.SupportedOutputFormats;
@@ -106,6 +118,8 @@ public class HeicImageEncoder : IImageEncoder
     /// <inheritdoc />
     public bool SupportsImageEncoding => _inner.SupportsImageEncoding;
 
+    private bool CanDecodeHeic => DecodingState == HeicDecodingState.Enabled;
+
     /// <summary>
     /// Reports an image's dimensions, answering for HEIC from the container instead of the pixels.
     /// </summary>
@@ -120,7 +134,7 @@ public class HeicImageEncoder : IImageEncoder
     /// </remarks>
     public ImageDimensions GetImageSize(string path)
     {
-        if (_canDecodeHeic.Value && HeicContainer.HasHeicExtension(path))
+        if (CanDecodeHeic && HeicContainer.HasHeicExtension(path))
         {
             var image = _decoder.Probe(path);
 
@@ -167,7 +181,7 @@ public class HeicImageEncoder : IImageEncoder
     {
         string Delegate() => _inner.EncodeImage(inputPath, dateModified, outputPath, autoOrient, orientation, quality, options, outputFormat);
 
-        if (!_canDecodeHeic.Value || !HeicContainer.HasHeicExtension(inputPath))
+        if (!CanDecodeHeic || !HeicContainer.HasHeicExtension(inputPath))
         {
             return Delegate();
         }
@@ -259,8 +273,9 @@ public class HeicImageEncoder : IImageEncoder
     /// Decides once whether the server's ffmpeg is new enough to decode HEIF, and says so in the
     /// log either way.
     /// </summary>
-    /// <returns><c>true</c> when HEIC decoding should be attempted.</returns>
-    private bool CheckFfmpeg()
+    /// <returns><see cref="HeicDecodingState.Enabled"/> when HEIC decoding should be attempted,
+    /// otherwise the reason it will not be.</returns>
+    private HeicDecodingState CheckFfmpeg()
     {
         var version = _mediaEncoder.EncoderVersion;
 
@@ -270,7 +285,7 @@ public class HeicImageEncoder : IImageEncoder
             // image encoder before validation ran. Either way there is nothing to decode with.
             _logger.LogWarning(
                 "No ffmpeg version reported by the server, so HEIC decoding is off. Photos will resolve but will not render.");
-            return false;
+            return HeicDecodingState.FfmpegMissing;
         }
 
         if (version < MinimumFfmpegVersion)
@@ -280,10 +295,10 @@ public class HeicImageEncoder : IImageEncoder
                 version,
                 _mediaEncoder.EncoderPath,
                 MinimumFfmpegVersion);
-            return false;
+            return HeicDecodingState.FfmpegTooOld;
         }
 
         _logger.LogInformation("HEIC decoding enabled, using ffmpeg {Version} at {Path}.", version, _mediaEncoder.EncoderPath);
-        return true;
+        return HeicDecodingState.Enabled;
     }
 }

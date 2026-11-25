@@ -24,7 +24,8 @@ sees extra items in `/Items` and needs no change whatsoever.
 **The encoder decorator is the heart of the design.** Plugging in there keeps the
 request inside Jellyfin's own pipeline — auth, per-library ACL, resized-image cache,
 encoding concurrency limit, ETags, `?tag=` immutability. No controller, no
-middleware, **no new attack surface**.
+middleware, **no new attack surface**. (1.1.0.0 later added one read-only status route
+that serves no image and takes no input; `06-status-endpoint.md`.)
 
 The metadata provider is not optional: it is the only thing that sets `PremiereDate`,
 and jellypic's entire timeline sorts on it.

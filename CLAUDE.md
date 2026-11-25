@@ -28,6 +28,7 @@ docs/
   03-prior-art.md            existing plugins, security audit, upstream status
   04-j0-spike.md             the decoder spike: results, next commands, branches
   05-jellyfin-12.md          Jellyfin 12: why one binary serves 10.11 and 12, the live test
+  06-status-endpoint.md      GET /HeicForJelly/Status: why, contract, auth and timing checks
 ```
 
 ## Ground rules
@@ -40,10 +41,20 @@ paths: `https://api.github.com/repos/jellyfin/jellyfin/git/trees/v10.11.0?recurs
 **Every claim in `docs/` cites `file:symbol`, never `file:line`.** Line numbers rot
 across releases; symbols survive.
 
-**No new HTTP surface.** The design plugs into `IImageEncoder`, inside Jellyfin's own
-image pipeline, precisely so that auth, per-library ACL, the resized-image cache and
-ETags keep applying untouched. Any proposal that adds a controller or a middleware is
-re-opening the hole that disqualified the prior art — see `docs/03-prior-art.md`.
+**No HTTP surface that takes input or serves content.** The design plugs into
+`IImageEncoder`, inside Jellyfin's own image pipeline, precisely so that auth,
+per-library ACL, the resized-image cache and ETags keep applying untouched. Any
+proposal that adds a route taking a path, an id or a body, or one that returns image
+bytes, or any middleware, is re-opening the hole that disqualified the prior art — see
+`docs/03-prior-art.md`.
+
+The single exception is **`GET /HeicForJelly/Status`** (1.1.0.0): authenticated by the
+default policy, it takes no input, serves no file, touches no path and reports one value
+already in memory — the decision that gates decoding. That is why it does not reopen the
+hole. It exists because a non-administrator cannot otherwise tell whether HEIC will
+render, and it lives here rather than in Upload for Jelly so that each plugin stays
+removable on its own. `docs/06-status-endpoint.md`. Adding a second route needs the same
+argument made again, not this paragraph cited.
 
 **Third-party code is scanned before use, not after.** That rule is what caught the
 unauthenticated arbitrary-file-read in `heicext`. Applies to NuGet packages too.
@@ -160,6 +171,14 @@ server, reproduced production 10.11.6 on all 884 HEIC: dimensions, 14 metadata f
 - **Photo libraries are `collectionType=homevideos` + `EnablePhotos`.** `photos` is not
   accepted by `POST /Library/VirtualFolders` and silently yields a library with no
   `Photo` item at all.
+
+**1.1.0.0 adds `GET /HeicForJelly/Status`** (2026-11-24), for jellypic's onboarding:
+`{"decoding": true}`, or `false` with `FFMPEG_TOO_OLD`, `FFMPEG_MISSING` or
+`ENCODER_NOT_DECORATED`; 404 means not installed, or 1.0.x. It reports
+`HeicImageEncoder.DecodingState`, the same `Lazy` that gates the decoder. Verified in
+source: a plain `[Authorize]` refuses anonymous callers (401), and no controller action
+can run before ffmpeg is validated, because the server answers 503 until then — so the
+route cannot freeze decoding off. Not yet built, deployed or released. `docs/06`.
 
 The remaining risk is still **ABI drift**, now per major: a future 12.x or 13 can break
 the old binary while 10.11 still matters. Then, and only then, release two builds —
